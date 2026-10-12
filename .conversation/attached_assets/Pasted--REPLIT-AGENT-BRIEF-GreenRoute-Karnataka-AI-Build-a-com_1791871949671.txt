@@ -1,0 +1,360 @@
+# REPLIT AGENT BRIEF: GreenRoute Karnataka AI
+
+Build a complete, working, demo-ready full-stack web app exactly as specified below. Do not ask clarifying questions. Make reasonable choices where something is unspecified, and prioritise a polished, bug-free demo over extra scope. The app must run with **zero API keys**. Every AI feature has a deterministic fallback.
+
+---
+
+## 1. APP OVERVIEW
+
+**Name:** GreenRoute Karnataka AI
+
+**One-liner:** An AI travel planner that recommends Karnataka attractions, builds a personalised day-by-day itinerary, and compares the cheapest, fastest, greenest and best-balanced multimodal routes between stops. It re-plans instantly when budget, time or preferences change.
+
+**Problem it solves:** Travellers in Karnataka struggle to decide (a) where to go, (b) how to sequence places sensibly by day, (c) how to get between them cheaply and sustainably, and (d) how to adjust when plans change. Existing tools handle only one of these. Public transport and CO₂ impact are almost never shown.
+
+**Target users:** Domestic and international tourists (students, backpackers, families, eco-conscious travellers) planning 1–7 day trips in Karnataka from a city such as Bengaluru, Mysuru or Mangaluru.
+
+**Hackathon framing:** Problem Statement 6, "AI Travel Planner for Karnataka". The pitch is: *"We don't just tell you where to go. We tell you where to go, what to do each day, how to get there, and which option best fits your budget, time and planet."*
+
+---
+
+## 2. FULL FEATURE LIST (priority order)
+
+### P0: Core (must work flawlessly)
+1. **Tourist-place recommender.** Interest-based ranking of 35+ curated Karnataka attractions. Interests: History, Nature, Waterfalls, Beaches, Temples, Adventure, Food, Wildlife, Hidden Gems. Each result shows a match score and a "why recommended" line.
+2. **Personalised itinerary planner.** Inputs: starting city, number of days (1–7), total budget (₹), interests (multi-select), travel pace (Relaxed / Balanced / Packed), transport preference (Cheapest / Fastest / Greenest / Balanced), and walking tolerance (Low / Medium / High). Output is a day-by-day plan with ordered stops, visit durations, timings, and per-day and total cost.
+3. **Multimodal route optimiser.** For every leg between consecutive stops, generate options using Walk, Local Bus (KSRTC/BMTC), Namma Metro (Bengaluru only), Train (between rail-connected hubs), Auto, Cab and E-Cab. Compute cost (₹), time (min) and CO₂ (kg) per option. Select the best option per leg for each of 4 strategies: **Cheapest, Fastest, Greenest, Balanced**.
+4. **Cost / Time / Emissions comparison dashboard.** A 4-column strategy comparison with bar charts, a "winner" badge per metric, and a CO₂-saved-vs-all-cab baseline.
+5. **Adaptive replanning.** A "Change my plan" panel with a budget slider, days slider, walking tolerance, and strategy switch. Re-running the planner shows a diff ("Removed: X, Swapped bus→metro, Saved ₹820"). Includes a natural-language box ("I only have ₹3000 now and hate walking").
+6. **Interactive map (Leaflet + OpenStreetMap).** Numbered markers per day (colour-coded per day), route polylines colour-coded by transport mode, popups, fit-to-bounds per day, and layer toggles.
+
+### P1: Impressive extras
+7. **Budget-overrun assistant.** If the plan exceeds budget, show a banner with 3 one-click fixes (e.g. "Drop Jog Falls → saves ₹1,150", "Switch to greenest transport → saves ₹640", "Cut 1 day").
+8. **Eco Score** (0–100) for the whole trip, with an animated gauge and an equivalent such as "= 6 trees' daily absorption".
+9. **Live weather per stop and day** (Open-Meteo, free). If heavy rain is forecast, flag outdoor stops with a ⚠️ and suggest an indoor swap.
+10. **Place detail drawer.** Photo (Wikipedia API), description, entry fee, best months, time needed, tags and "Add to / Remove from itinerary".
+11. **Save / load trips** (localStorage) and **shareable summary + Print/PDF** (`window.print()` with print stylesheet).
+12. **AI narrative.** A short friendly summary per day ("Day 1 blends Hoysala art with …"). If `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` env var is set, call the LLM. Otherwise use template-based text.
+
+### P2: Nice-to-have
+13. Lesser-known / hidden-gem toggle that boosts offbeat places.
+14. Dark mode toggle.
+15. Seasonal "best time" badge per place, based on the travel month chosen.
+16. Animated hero with a typed tagline and a Karnataka map silhouette.
+
+---
+
+## 3. TECH STACK
+
+Single repo, one Replit project, two parts:
+
+- **Frontend:** React 18 + Vite + TypeScript, Tailwind CSS, `react-router-dom`, `zustand` (state), `react-leaflet` + `leaflet`, `recharts` (charts), `framer-motion` (animations), `lucide-react` (icons), `clsx`, `date-fns`.
+- **Backend:** Node.js + Express + TypeScript (`tsx` to run), `cors`, `zod` (validation), `node-cache` (in-memory caching of external API calls). Backend serves `/api/*`. In production the frontend build is served statically from Express. Configure the Vite dev server to proxy `/api` to the Express port.
+- **Data:** Static JSON files in `/server/data` (no database). Trips are saved client-side in `localStorage`.
+- **Optional AI:** use `fetch` directly against the Anthropic or OpenAI REST API if the env var exists. Wrap in try/catch with a 6s timeout and always fall back to templates.
+- **Free external services (no keys):** OSRM public demo server, Open-Meteo, Wikipedia REST API, OpenStreetMap/CARTO tiles. All external calls go through the backend with caching and graceful fallbacks, so the demo never breaks if a service is down.
+- **Run command:** `npm run dev` runs both with `concurrently`. Expose the web app on port 5173 (or whichever Replit maps) and the API on 3001.
+
+---
+
+## 4. PAGES & USER FLOW
+
+**Routes (react-router):**
+
+1. **`/` Landing page**
+   - Hero: full-width gradient with a headline "Plan Karnataka. Travel Green.", a typed subtitle, and a primary CTA "Plan my trip" → `/plan`, plus a secondary CTA "Explore places" → `/explore`.
+   - 3 feature cards (Discover, Plan, Route Greener). A stats strip ("35+ places · 7 transport modes · up to 70% less CO₂"). A "Popular trip" row of 3 sample presets ("3-Day Heritage Trail", "Coastal & Waterfalls", "Bengaluru Green Weekend") that deep-link to `/results` with prefilled inputs.
+
+2. **`/plan` Trip planner (wizard, 3 steps with progress bar)**
+   - Step 1: Start city (dropdown: Bengaluru, Mysuru, Mangaluru, Hubballi, Belagavi, Hosapete, Madikeri, Udupi, Shivamogga, Vijayapura, Bidar, Chikkamagaluru, Hassan), days (stepper 1–7), travel month (dropdown).
+   - Step 2: Interest chips (multi-select with icons; "Hidden gems" toggle).
+   - Step 3: Budget (₹ slider 1,500–50,000 with number input, default ₹5,000), pace (3 segmented cards), transport priority (4 cards: Cheapest / Fastest / Greenest / Balanced), walking tolerance (3 options).
+   - Button "Generate itinerary" → loading state with animated steps ("Finding places… Sequencing days… Optimising routes…") → `/results`.
+
+3. **`/results` Itinerary + map (main page; two-column on desktop, stacked with a sticky map toggle on mobile)**
+   - Left panel: summary header (total cost vs budget progress bar, total time, total CO₂, Eco Score gauge). Strategy tabs (Cheapest / Fastest / Greenest / Balanced). Day tabs (Day 1…N). A vertical timeline of stops, with leg cards between stops showing the chosen mode icon, time, cost, CO₂ and an "alternatives" expander. Each stop has a card (photo, name, fee, duration, weather chip, "Why this place").
+   - Right panel: interactive Leaflet map.
+   - Top-right actions: "Change my plan" (opens right drawer), "Compare strategies" (→ `/compare`), "Save trip", "Print".
+   - Budget banner appears if over budget.
+
+4. **`/compare` Strategy comparison**
+   - 4 strategy cards side by side (Cheapest, Fastest, Greenest, Balanced). Each shows total ₹, time, kg CO₂ and a mode mix donut. Recharts grouped bar chart for cost/time/CO₂ (normalised). Winner badges. A table of per-leg breakdown. Highlight the CO₂ saved versus the all-cab baseline. "Use this strategy" button returns to `/results`.
+
+5. **`/explore` Place explorer (recommender)**
+   - Filter bar (interest chips, region, max fee, hidden gems). A responsive grid of place cards with match score. Click opens the place drawer. "Add to trip" builds a custom shortlist stored in the planner state, which the planner must respect as "must-visit".
+
+6. **`/trips` Saved trips**
+   - List of saved itineraries (name, date, days, cost). Open, delete, duplicate.
+
+**Global:** a sticky top navbar (logo, Explore, Plan, Saved Trips, dark-mode toggle) and a footer with credits and a data-disclaimer line ("Costs & emissions are estimates for planning purposes").
+
+**Primary flow:** Landing → Plan wizard → Results → (Change plan / Compare) → Save/Print.
+
+---
+
+## 5. UI & DESIGN INSTRUCTIONS
+
+- **Style:** modern, clean, "eco-travel" look. Rounded-2xl cards, soft shadows, generous whitespace, glassmorphism on the hero and drawers.
+- **Palette (define as Tailwind CSS variables):**
+  - Primary emerald `#10B981`, deep forest `#064E3B`, accent saffron `#F59E0B`, sky `#0EA5E9`, background `#F8FAFC` (dark: `#0B1220`), text `#0F172A` (dark: `#E5E7EB`).
+  - Mode colours: Walk `#22C55E`, Metro `#8B5CF6`, Bus `#F59E0B`, Train `#0EA5E9`, E-Cab `#14B8A6`, Auto `#F97316`, Cab `#EF4444`.
+  - Day colours for markers: `#10B981, #0EA5E9, #F59E0B, #8B5CF6, #EF4444, #14B8A6, #EC4899`.
+- **Fonts (Google Fonts):** "Plus Jakarta Sans" for headings and "Inter" for body.
+- **Components and animations:**
+  - Hero gradient from `#064E3B` → `#10B981` with floating leaf/wave shapes (framer-motion).
+  - Interest chips with a spring "pop" on select. Wizard step transitions (slide + fade).
+  - Animated number counters for cost, time and CO₂. Animated circular Eco Score gauge (SVG stroke-dashoffset).
+  - Skeleton loaders. Staggered fade-in for the timeline items.
+  - Mode badges with lucide icons (Footprints, Bus, TrainFront, Train, Car, Zap, Bike).
+  - Map markers as numbered circle `divIcon`s coloured by day. Polylines coloured by mode (dashed for walking).
+  - Toasts for save/replan actions. A diff panel with green "+" and red "−" rows after replanning.
+- **Responsive:** must look great at 375px (mobile) and 1440px. On mobile the results page uses a bottom sheet for the timeline over the map with a "Map / List" toggle.
+- **Accessibility:** buttons have aria-labels, visible focus rings, and contrast ≥ 4.5:1.
+- **Print stylesheet:** hide the nav and map, show a clean day-wise itinerary with a totals table.
+
+---
+
+## 6. DATA & APIs
+
+### 6.1 TypeScript data models (put in `/shared/types.ts`)
+
+```ts
+type Interest = 'history'|'nature'|'waterfalls'|'beaches'|'temples'|'adventure'|'food'|'wildlife'|'hidden-gems';
+type Mode = 'walk'|'metro'|'bus'|'train'|'auto'|'cab'|'ecab';
+type Strategy = 'cheapest'|'fastest'|'greenest'|'balanced';
+
+interface Place {
+  id: string; name: string; region: string; hub: string;      // hub = nearest start-city hub id
+  lat: number; lng: number;
+  tags: Interest[]; hiddenGem: boolean;
+  fee: number;            // INR per Indian adult
+  visitHrs: number;       // typical time on site
+  bestMonths: number[];   // 1-12
+  outdoor: boolean;
+  wiki: string;           // Wikipedia page title for photo/summary
+  desc: string;           // 1–2 sentences
+  metroStation?: string;  // Bengaluru only, id from metro stations
+}
+interface Hub { id: string; name: string; lat: number; lng: number; railConnected: boolean; metro?: boolean; }
+interface TripInput {
+  startHub: string; days: number; budget: number; interests: Interest[];
+  pace: 'relaxed'|'balanced'|'packed'; priority: Strategy;
+  walking: 'low'|'medium'|'high'; month: number; hiddenGems: boolean;
+  mustVisit?: string[]; excluded?: string[];
+}
+interface LegOption { mode: Mode; modes?: Mode[]; distanceKm: number; minutes: number; cost: number; co2Kg: number; label: string; }
+interface Leg { fromId: string; toId: string; options: LegOption[]; chosen: Record<Strategy, LegOption>; geometry?: [number,number][]; }
+interface Stop { place: Place; arrive: string; depart: string; matchScore: number; why: string; weather?: {tMax:number; rainMm:number; code:number}; }
+interface Day { dayNo: number; stops: Stop[]; legs: Leg[]; entryCost: number; foodCost: number; stayCost: number; narrative: string; }
+interface Itinerary {
+  input: TripInput; days: Day[];
+  totals: Record<Strategy, {cost:number; minutes:number; co2Kg:number; modeMix:Record<Mode,number>}>;
+  baselineCo2Kg: number; ecoScore: number; overBudgetBy: number; suggestions: Suggestion[];
+}
+```
+
+### 6.2 Constants (`/server/data/constants.json`; approximate planning values)
+
+```
+roadCircuity: 1.3 (multiply haversine to estimate road km if OSRM fails)
+speedsKmph:   walk 5, bus_city 18, bus_intercity 42, metro 33, train 50, auto 20, cab_city 24, cab_highway 55
+waitMinutes:  bus 15, metro 6, train 40, auto 3, cab 8, ecab 8
+fareInrPerKm: bus 1.8 (min ₹10), metro (₹10 + 2.5/km, cap ₹60), train 0.9 (min ₹30), auto 16 (min ₹30), cab 15 (min ₹80), ecab 13 (min ₹70)
+co2GramsPerKm (per passenger): walk 0, metro 30, train 35, bus 55, ecab 40, auto 85, cab 170
+walkMaxKm by tolerance: low 0.8, medium 2, high 4
+dailyFoodInr: low 400, mid 700, high 1200 (choose tier by budget per day: <1500 low, <3000 mid, else high)
+nightlyStayInr: budget 700, mid 1800, comfort 3500 (same tier logic; no stay on the final day)
+dayStart: 08:30; maxActiveHours: relaxed 7, balanced 9, packed 11
+stopsPerDay: relaxed 2, balanced 3, packed 4
+treeDailyAbsorptionKg: 0.058
+```
+
+Mode rules per leg:
+- **Walk:** only if distance ≤ walkMaxKm for the chosen tolerance.
+- **Metro:** only if both places have `metroStation` (or a walkable station within 1.2 km) and both are in the Bengaluru metro dataset. Compose as walk + metro + walk, adding walk minutes.
+- **Train:** only if the leg is inter-hub (> 80 km), both hubs are `railConnected`, and the pair appears in the rail-pairs list. Compose as local leg to the station (auto/bus) + train + local leg.
+- **Bus / Auto / Cab / E-Cab:** always available (E-cab only within Bengaluru, Mysuru and Mangaluru hubs or for ≤ 80 km).
+- Distance and duration come from OSRM (see below) with Haversine × 1.3 as the fallback.
+
+Rail-connected pairs (approximate; used for train options): Bengaluru–Mysuru, Bengaluru–Hosapete, Bengaluru–Hubballi, Bengaluru–Vijayapura (via Solapur-line), Bengaluru–Mangaluru, Hubballi–Hosapete, Hubballi–Belagavi, Mangaluru–Udupi, Mysuru–Hassan, Bengaluru–Hassan, Bengaluru–Shivamogga.
+
+### 6.3 Hubs (`/server/data/hubs.json`)
+
+```
+Bengaluru 12.9716,77.5946 rail+metro | Mysuru 12.2958,76.6394 rail | Mangaluru 12.9141,74.8560 rail
+Hubballi 15.3647,75.1240 rail | Belagavi 15.8497,74.4977 rail | Hosapete 15.2689,76.3909 rail
+Madikeri 12.4244,75.7382 (no rail) | Udupi 13.3409,74.7421 rail | Shivamogga 13.9299,75.5681 rail
+Vijayapura 16.8302,75.7100 rail | Bidar 17.9104,77.5199 rail | Chikkamagaluru 13.3161,75.7720 (no rail) | Hassan 13.0068,76.1004 rail
+```
+
+### 6.4 Bengaluru metro stations (for the metro rule)
+
+```
+Majestic 12.9757,77.5728 | Vidhana Soudha 12.9795,77.5911 | Cubbon Park 12.9810,77.5970
+MG Road 12.9756,77.6068 | Lalbagh 12.9468,77.5802 | KR Market 12.9626,77.5769
+```
+
+### 6.5 Mock places (`/server/data/places.json`: create ALL of these, 37 entries; expand each `desc` to 1–2 vivid sentences. Coordinates are approximate and fine for a prototype)
+
+Format: `id | name | hub | lat,lng | tags | hiddenGem | fee ₹ | hrs | bestMonths | outdoor | wiki title`
+
+```
+mysore-palace | Mysore Palace | Mysuru | 12.3052,76.6552 | history,culture→use history | F | 100 | 2 | 10-3 | F | Mysore Palace
+chamundi-hills | Chamundi Hills & Temple | Mysuru | 12.2724,76.6701 | temples,nature | F | 0 | 2 | 10-2 | T | Chamundi Hills
+brindavan | Brindavan Gardens | Mysuru | 12.4244,76.5726 | nature | F | 50 | 2 | 9-2 | T | Brindavan Gardens
+somanathapura | Chennakesava Temple, Somanathapura | Mysuru | 12.2735,76.8789 | history,temples | T | 25 | 1.5 | 10-3 | F | Chennakesava Temple, Somanathapura
+kokkare-bellur | Kokkare Bellur Pelican Village | Mysuru | 12.4930,76.7020 | wildlife,hidden-gems | T | 0 | 1.5 | 11-3 | T | Kokkare Bellur
+srirangapatna | Srirangapatna Fort & Tipu's Summer Palace | Mysuru | 12.4180,76.6930 | history | F | 25 | 2.5 | 10-3 | T | Srirangapatna
+hampi-virupaksha | Virupaksha Temple, Hampi | Hosapete | 15.3350,76.4600 | history,temples | F | 0 | 1.5 | 10-2 | F | Virupaksha Temple, Hampi
+hampi-vittala | Vittala Temple & Stone Chariot | Hosapete | 15.3350,76.4747 | history | F | 40 | 2.5 | 10-2 | T | Vittala Temple
+hampi-matanga | Matanga Hill Sunrise | Hosapete | 15.3306,76.4672 | nature,hidden-gems | T | 0 | 2 | 10-2 | T | Hampi
+anegundi | Anegundi & Hanuman Temple (Anjanadri) | Hosapete | 15.3510,76.4960 | temples,adventure,hidden-gems | T | 0 | 3 | 10-2 | T | Anegundi
+badami-caves | Badami Cave Temples | Vijayapura | 15.9188,75.6859 | history,temples | F | 40 | 2.5 | 10-2 | T | Badami cave temples
+pattadakal | Pattadakal (UNESCO) | Vijayapura | 15.9486,75.8165 | history,temples | F | 40 | 1.5 | 10-2 | T | Pattadakal
+aihole | Aihole Temples | Vijayapura | 16.0213,75.8847 | history,hidden-gems | T | 40 | 2 | 10-2 | T | Aihole
+gol-gumbaz | Gol Gumbaz, Vijayapura | Vijayapura | 16.8302,75.7336 | history | F | 25 | 1.5 | 10-2 | F | Gol Gumbaz
+ibrahim-rauza | Ibrahim Rauza | Vijayapura | 16.8350,75.7237 | history | T | 25 | 1 | 10-2 | F | Ibrahim Rauza
+lakkundi | Lakkundi Temples | Hubballi | 15.3860,75.7130 | history,temples,hidden-gems | T | 0 | 1.5 | 10-2 | T | Lakkundi
+bidar-fort | Bidar Fort | Bidar | 17.9235,77.5186 | history,hidden-gems | T | 25 | 2 | 10-2 | F | Bidar Fort
+belur | Chennakeshava Temple, Belur | Hassan | 13.1650,75.8651 | history,temples | F | 0 | 1.5 | 10-3 | F | Chennakeshava Temple, Belur
+halebidu | Hoysaleswara Temple, Halebidu | Hassan | 13.2127,75.9930 | history,temples | F | 0 | 1.5 | 10-3 | F | Hoysaleswara Temple
+shravanabelagola | Shravanabelagola (Gommateshwara) | Hassan | 12.8597,76.4837 | temples,history | F | 0 | 2 | 10-2 | T | Shravanabelagola
+abbey-falls | Abbey Falls | Madikeri | 12.4570,75.7186 | waterfalls,nature | F | 15 | 1.5 | 6-1 | T | Abbey Falls
+rajas-seat | Raja's Seat, Madikeri | Madikeri | 12.4194,75.7380 | nature | F | 10 | 1 | 10-3 | T | Raja's Seat
+dubare | Dubare Elephant Camp | Madikeri | 12.3881,75.9347 | wildlife,adventure | F | 80 | 3 | 10-3 | T | Dubare Elephant Camp
+talakaveri | Talakaveri & Bhagamandala | Madikeri | 12.3830,75.4950 | temples,nature | F | 0 | 2.5 | 6-2 | T | Talakaveri
+jog-falls | Jog Falls | Shivamogga | 14.2294,74.8127 | waterfalls,nature | F | 20 | 2.5 | 7-12 | T | Jog Falls
+gokarna-om | Om Beach, Gokarna | Hubballi | 14.5204,74.3169 | beaches,adventure | F | 0 | 3 | 11-2 | T | Om Beach
+mahabaleshwara | Mahabaleshwara Temple, Gokarna | Hubballi | 14.5479,74.3188 | temples | F | 0 | 1 | 10-3 | F | Mahabaleshwar Temple, Gokarna
+murudeshwar | Murudeshwar Temple & Beach | Udupi | 14.0941,74.4849 | temples,beaches | F | 0 | 2 | 10-3 | T | Murudeshwara
+udupi-krishna | Sri Krishna Temple & Udupi Cuisine | Udupi | 13.3409,74.7421 | temples,food | F | 0 | 2 | 10-3 | F | Udupi Sri Krishna Matha
+st-marys | St. Mary's Island & Malpe Beach | Udupi | 13.3794,74.6609 | beaches,nature | F | 300 | 3 | 11-2 | T | St. Mary's Islands
+panambur | Panambur Beach & Mangaluru Seafood Trail | Mangaluru | 12.9500,74.8000 | beaches,food | F | 0 | 2.5 | 11-2 | T | Panambur Beach
+kudremukh | Kudremukh Trek | Chikkamagaluru | 13.1983,75.2490 | adventure,nature | F | 250 | 7 | 10-2 | T | Kudremukh
+mullayanagiri | Mullayanagiri Peak | Chikkamagaluru | 13.3917,75.7208 | nature,adventure | F | 0 | 2.5 | 10-2 | T | Mullayanagiri
+dandeli | Dandeli Rafting & Wildlife | Hubballi | 15.2490,74.6170 | adventure,wildlife | F | 900 | 4 | 10-5 | T | Dandeli
+lalbagh | Lalbagh Botanical Garden | Bengaluru | 12.9507,77.5848 | nature | F | 30 | 2 | 1-12 | T | Lalbagh | metroStation: Lalbagh
+cubbon-vidhana | Cubbon Park & Vidhana Soudha | Bengaluru | 12.9763,77.5929 | nature,history | F | 0 | 1.5 | 1-12 | T | Cubbon Park | metroStation: Cubbon Park
+bangalore-palace | Bangalore Palace | Bengaluru | 12.9988,77.5921 | history | F | 270 | 1.5 | 1-12 | F | Bangalore Palace
+tipus-palace | Tipu Sultan's Summer Palace | Bengaluru | 12.9593,77.5737 | history,hidden-gems | T | 25 | 1 | 1-12 | F | Tipu Sultan's Summer Palace | metroStation: KR Market
+vv-puram-food | VV Puram Food Street | Bengaluru | 12.9486,77.5736 | food | F | 0 | 1.5 | 1-12 | F | V. V. Puram | (walkable to KR Market metro)
+nandi-hills | Nandi Hills Sunrise | Bengaluru | 13.3702,77.6835 | nature,history | F | 20 | 3 | 9-2 | T | Nandi Hills
+savandurga | Savandurga Monolith Trek | Bengaluru | 12.9210,77.2940 | adventure,nature | F | 0 | 4 | 10-2 | T | Savandurga
+bandipur | Bandipur Safari | Mysuru | 11.6700,76.6300 | wildlife,nature | F | 350 | 3.5 | 10-5 | T | Bandipur National Park
+```
+
+Interpret `bestMonths` like `10-3` as a wrapping range (October through March). Include a few Karnataka specialty food notes in `desc` where relevant (Mysore pak, Udupi dosa, Coorg pandi curry, Mangalorean fish thali).
+
+### 6.7 Free APIs to integrate (all through backend proxy routes with caching)
+
+1. **OSRM routing (no key):**
+   `GET https://router.project-osrm.org/route/v1/driving/{lng1},{lat1};{lng2},{lat2}?overview=full&geometries=geojson`
+   → use `routes[0].distance` (m), `routes[0].duration` (s), `routes[0].geometry.coordinates` (array of `[lng,lat]`; flip to `[lat,lng]` for Leaflet). Timeout 5s. Cache by coordinate pair for 24h. On failure, use the Haversine × 1.3 estimate and a straight-line polyline. Never block the UI.
+2. **Open-Meteo forecast (no key):**
+   `GET https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lng}&daily=temperature_2m_max,precipitation_sum,weathercode&timezone=Asia%2FKolkata&forecast_days=7`
+   → flag a stop if `precipitation_sum` ≥ 15 mm and `outdoor` is true. Cache 1h. Skip silently on failure.
+3. **Wikipedia REST summary (no key):**
+   `GET https://en.wikipedia.org/api/rest_v1/page/summary/{wiki_title_url_encoded}`
+   → use `thumbnail.source` for the photo and `extract` as the description override. Cache 7d. Fallback to a gradient with an emoji if no thumbnail.
+4. **Map tiles:** CARTO Voyager `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png` with OpenStreetMap + CARTO attribution.
+5. **Optional LLM (only if env var is set):** Anthropic `POST https://api.anthropic.com/v1/messages` (header `x-api-key`, `anthropic-version: 2023-06-01`) or OpenAI chat completions. Use for (a) daily narratives and (b) parsing natural-language replans into JSON `{budget?, days?, walking?, priority?, excludeInterests?}`. Fallback is templates plus a regex parser (`₹?(\d[\d,]*)`, "less/no walking", "greenest", "fastest", "cheaper", "1 less day").
+
+### 6.8 Backend API routes
+
+```
+GET  /api/places?interests=&hub=&maxFee=&hidden=      → ranked places with matchScore
+GET  /api/places/:id/media                            → {thumbnail, extract} (Wikipedia, cached)
+GET  /api/hubs                                        → hubs list
+POST /api/itinerary                 body: TripInput   → Itinerary
+POST /api/replan  body: {itinerary.input, changes}    → {itinerary, diff}
+POST /api/replan/nl  body: {input, text}              → {changes, itinerary, diff}
+GET  /api/weather?lat=&lng=                           → cached forecast
+GET  /api/health
+```
+
+---
+
+## 7. CORE ALGORITHMS (implement exactly; deterministic and explainable)
+
+**A. Recommendation score (0–100) per place:**
+```
+interestMatch = |place.tags ∩ user.interests| / max(1, |user.interests|)       (0–1)
+score = 60*interestMatch + 15*(hiddenGemsOn && place.hiddenGem ? 1 : 0)
+      + 10*seasonFit (1 if month in bestMonths else 0.3) + 10*feeFit (1 - min(1, fee/ (budget/ (days*3))))
+      + 5*proximity (1 - min(1, haversine(startHub, place)/600km))
+mustVisit → +100 ; excluded → remove
+```
+
+The `why` text = "Matches your interest in {tags}, best in {month}, ₹{fee} entry".
+
+**B. Itinerary construction:**
+1. Rank places by score. Take the top N = `days × stopsPerDay[pace]` candidates after clustering.
+2. **Cluster by hub/region** (group by `place.hub`; compute cluster value = sum of top scores). Choose clusters greedily by value, preferring clusters near the start city. Multi-day trips pick adjacent clusters (cluster centroid distance ≤ 350 km between consecutive clusters). Day 1 stops come from the cluster nearest the start.
+3. Within each day, order stops with **nearest-neighbour + 2-opt** starting from the previous day's last stop (day 1 from the start hub). Hard-constrain `sum(visitHrs + travelHrs) ≤ maxActiveHours[pace]`. If exceeded, drop the lowest-score stop from that day and backfill it to another day if it fits.
+4. Timestamp: the day begins at 08:30, with a 45-min lunch inserted when the cumulative time passes 13:00.
+
+**C. Leg options and strategy selection:**
+For each consecutive pair (including the start hub → first stop of Day 1), build all feasible `LegOption`s per Section 6.2. Compute `cost = fare + entry (separately)`, `minutes = travel + wait`, `co2 = distance × gPerKm / 1000`.
+Normalise each metric within the leg (min-max over options), then:
+```
+cheapest : minimise cost (tie → time)
+fastest  : minimise minutes (tie → cost)
+greenest : minimise co2 (tie → cost); also add a +0.3 penalty weight for walking beyond tolerance
+balanced : minimise 0.4*costNorm + 0.4*timeNorm + 0.2*co2Norm  (if the user priority is 'greenest', use 0.3/0.2/0.5 instead)
+```
+Walking above the user's tolerance is disallowed in all strategies.
+
+**D. Totals and Eco Score:**
+```
+trip cost = Σ entry fees + Σ leg fares + foodCost + stayCost   (per strategy)
+baselineCo2 = Σ legDistance × cab gPerKm
+ecoScore = clamp(100 × (1 - co2 / baselineCo2), 0, 100)
+```
+
+Show "equals X tree-days of absorption" = `co2 / treeDailyAbsorptionKg`.
+
+**E. Over-budget handling → `suggestions[]`:**
+Compute savings for (1) switching to the cheapest strategy, (2) removing the lowest-value stop, (3) cutting a day, and (4) downgrading the stay/food tier. Return the top 3 with the savings in ₹ and an `apply` payload that the frontend sends to `/api/replan`.
+
+**F. Replan:**
+`changes` can include budget, days, walking, priority, exclude ids and interests. Re-run the full pipeline and compute a `diff` by comparing stop ids per day and the chosen mode per leg: `{removedStops, addedStops, modeChanges, costDelta, timeDelta, co2Delta}`. Render with the animated diff panel and a toast ("Saved ₹820, −1.4 kg CO₂").
+
+---
+
+## 8. STEP-BY-STEP BUILD INSTRUCTIONS FOR REPLIT AGENT
+
+Follow these steps in order. After each major step, run the app and fix any errors before continuing.
+
+1. **Scaffold project.** Create a Node + TypeScript monorepo with `/client` (Vite React TS), `/server` (Express TS), `/shared` (types). Install: client → `react-router-dom zustand react-leaflet leaflet recharts framer-motion lucide-react clsx date-fns tailwindcss postcss autoprefixer @types/leaflet`; server → `express cors zod node-cache tsx typescript @types/express @types/cors`; root → `concurrently`. Add root scripts: `dev` (runs server on 3001 and client on 5173 concurrently), `build`, `start`. Configure the Vite proxy for `/api`. Make sure the Replit preview opens the client.
+2. **Tailwind and theme.** Configure Tailwind with the palette and fonts from Section 5, including `darkMode: 'class'`. Import Leaflet CSS. Create reusable UI primitives: `Button`, `Card`, `Chip`, `Badge`, `Drawer`, `Slider`, `Stepper`, `Toast`, `Skeleton`, `ModeBadge`, `AnimatedNumber`, `EcoGauge`.
+3. **Shared types and data.** Write `/shared/types.ts` (Section 6.1). Create `/server/data/constants.json`, `hubs.json`, `metro.json` and `places.json` with ALL 37 places from Section 6.5 (compose proper `desc` text, convert month ranges into arrays, add the `metroStation` and `wiki` fields).
+4. **Backend utilities.** Implement `haversine`, `osrmRoute(a,b)` (with cache + 5s timeout + fallback), `getWeather`, `getWikiMedia`, and a `cache` wrapper using `node-cache`.
+5. **Recommender engine** (`/server/engine/recommend.ts`): the scoring function in Section 7A, plus the `GET /api/places` and `/api/places/:id/media` routes.
+6. **Routing engine** (`/server/engine/routing.ts`): build mode options per leg per Section 6.2, apply the strategy selection in Section 7C, and return the polyline geometry from OSRM for the chosen cab/bus road legs (use straight lines for walk, and station-to-station lines for metro and train).
+7. **Itinerary engine** (`/server/engine/itinerary.ts`): clustering, nearest-neighbour + 2-opt ordering, time budgeting, timestamps, totals, Eco Score, and suggestions (Sections 7B, 7D, 7E). Expose `POST /api/itinerary`. Validate input with zod and return friendly errors.
+8. **Replan engine** (`/server/engine/replan.ts`): `POST /api/replan` and `POST /api/replan/nl` with the diff logic (7F), the regex parser, and the optional LLM parser. Also implement `narrate(day)` with a template and an optional LLM override.
+9. **Frontend state and API client.** Create a `zustand` store (`tripInput`, `itinerary`, `activeStrategy`, `activeDay`, `savedTrips`, `shortlist`, `darkMode`, `loading`) with localStorage persistence for `savedTrips` and `darkMode`. Write a typed `api.ts` client.
+10. **Layout and Landing page.** Navbar, footer, route setup, and the animated hero, feature cards, stats strip and preset trips (each preset navigates to `/results` after calling the API with prefilled inputs).
+11. **Planner wizard (`/plan`).** Build the 3-step wizard with validation, the interest chips with icons, sliders, segmented cards, a progress bar, and the animated loading sequence. On submit call `POST /api/itinerary`, store the result, and navigate to `/results`.
+12. **Results page (`/results`).** Build: summary header (animated numbers, budget progress bar, Eco gauge), strategy tabs, day tabs, timeline of stop cards and leg cards (with the "alternatives" expander showing all options for that leg), the weather chips, the budget-overrun banner with 1-click fixes, and action buttons (Change plan, Compare, Save, Print).
+13. **Map component.** `react-leaflet` map with CARTO tiles, numbered coloured markers per day, mode-coloured polylines (dashed for walk), popups with the place name and image, `fitBounds` on day change, and a layer toggle (Day 1…N, All). Clicking a timeline stop focuses the marker; clicking a marker scrolls to the stop. Ensure the map invalidates its size when the drawer or tab layout changes.
+14. **Change-my-plan drawer.** Budget slider, days stepper, walking tolerance, strategy switch, exclude-place chips, and the natural-language text input with example placeholder chips ("I only have ₹3000", "less walking", "make it greener"). Call the replan endpoints and show an animated diff panel plus a toast. Update the timeline and map with a smooth transition.
+15. **Compare page (`/compare`).** Four strategy cards, a Recharts grouped bar chart (normalised cost, time, CO₂), a mode-mix donut per strategy, a winner badge per metric, a per-leg breakdown table, the CO₂-saved-vs-cab banner, and a "Use this strategy" button.
+16. **Explore page (`/explore`).** Filter bar, responsive card grid with match scores, the place drawer (photo from the media endpoint with a gradient fallback, description, fee, duration, best months, tags, add/remove from the shortlist), and a "Plan a trip with my shortlist" button that sends the `mustVisit` ids to `/plan`.
+17. **Saved trips page (`/trips`).** List, open, duplicate and delete saved itineraries from localStorage, with empty-state illustration text.
+18. **Polish.** Add skeleton loaders, error boundaries, empty states, toasts, dark mode, and the mobile layout (bottom sheet + Map/List toggle). Add the print stylesheet. Add the disclaimer footer. Verify there are no console errors and that every page is responsive at 375px and 1440px.
+19. **Seed demo path.** Ensure these three preset trips work end-to-end and look great, because they will be shown to judges:
+    - *Heritage & Nature, 3 days from Bengaluru, ₹5,000, history+nature, balanced pace, greenest priority.*
+    - *Coastal & Waterfalls, 4 days from Mangaluru, ₹8,000, beaches+waterfalls+food.*
+    - *Bengaluru Green Weekend, 2 days, ₹2,000, nature+food+history, low walking, using the metro.*
+    The ₹5,000 preset should deliberately demo over-budget suggestions when the budget is reduced to ₹3,000 via the replan drawer.
+20. **README and run.** Write a short README with setup, the optional env vars (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`), the demo script (the 3 presets plus the replan demo), and a "How the optimiser works" section covering Section 7. Confirm `npm run dev` works on a fresh Replit start and that the app functions fully with no API keys and with external APIs offline (fallbacks active).
+
+**Acceptance checklist (verify before finishing):**
+- Generating a 3-day, ₹5,000, history+nature trip from Bengaluru returns a plausible itinerary (e.g. Mysuru/Hassan cluster) with timeline, map, totals and 4 strategy variants.
+- Switching strategy tabs changes the chosen modes and totals visibly.
+- Lowering the budget in "Change my plan" produces a diff and a lower-cost plan, or a suggestion banner.
+- `/compare` shows correct winners and a CO₂ saving vs the cab baseline.
+- Map shows numbered markers and mode-coloured routes with no blank tiles.
+- The app works with all external APIs failing (fallbacks) and with no API keys.
+- UI is responsive, polished, animated and free of console errors.

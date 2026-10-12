@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "GreenRoute Karnataka AI"
+description = "An interactive Karnataka travel planner that recommends attractions, creates day-by-day itineraries, compares multimodal routes by cost, time, and emissions, and adapts trips when plans change."
+version = "1.0.0"
+id = "artifacts/greenroute-karnataka"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18865
+
+[services.development]
+run = "pnpm --filter @workspace/greenroute-karnataka run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/greenroute-karnataka", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/greenroute-karnataka/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18865"
+BASE_PATH = "/"

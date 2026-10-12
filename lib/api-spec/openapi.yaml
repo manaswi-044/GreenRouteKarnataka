@@ -3,13 +3,15 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Karnataka place discovery, itinerary planning, route comparison and adaptive replanning.
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: greenroute
+    description: GreenRoute Karnataka travel planning
 paths:
   /healthz:
     get:
@@ -24,6 +26,165 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /health:
+    get:
+      operationId: getGreenRouteHealth
+      tags: [greenroute]
+      summary: GreenRoute service health
+      responses:
+        "200":
+          description: Service status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /hubs:
+    get:
+      operationId: getHubs
+      tags: [greenroute]
+      summary: List supported travel hubs
+      responses:
+        "200":
+          description: Supported Karnataka hubs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Hub"
+  /places:
+    get:
+      operationId: getPlaces
+      tags: [greenroute]
+      summary: Find and rank attractions
+      parameters:
+        - in: query
+          name: interests
+          schema: { type: string }
+          description: Comma-separated interest tags
+        - in: query
+          name: hub
+          schema: { type: string }
+        - in: query
+          name: maxFee
+          schema: { type: number }
+        - in: query
+          name: hidden
+          schema: { type: boolean }
+        - in: query
+          name: month
+          schema: { type: integer }
+        - in: query
+          name: budget
+          schema: { type: number }
+        - in: query
+          name: days
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Ranked places
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RankedPlace"
+  /places/{placeId}/media:
+    get:
+      operationId: getPlaceMedia
+      tags: [greenroute]
+      summary: Get cached Wikipedia media and description for a place
+      parameters:
+        - in: path
+          name: placeId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Image and summary, with graceful empty values when unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaceMedia"
+        "404":
+          description: Place not found
+  /weather:
+    get:
+      operationId: getWeather
+      tags: [greenroute]
+      summary: Get a cached Open-Meteo forecast
+      parameters:
+        - in: query
+          name: lat
+          required: true
+          schema: { type: number }
+        - in: query
+          name: lng
+          required: true
+          schema: { type: number }
+      responses:
+        "200":
+          description: Forecast or a deterministic fallback
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Weather"
+  /itinerary:
+    post:
+      operationId: createItinerary
+      tags: [greenroute]
+      summary: Build a day-by-day itinerary and four route strategies
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TripInput"
+      responses:
+        "200":
+          description: Itinerary and route comparison metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Itinerary"
+        "400":
+          description: Invalid planning input
+  /replan:
+    post:
+      operationId: replanItinerary
+      tags: [greenroute]
+      summary: Rebuild a trip using changed constraints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplanRequest"
+      responses:
+        "200":
+          description: Updated itinerary and comparison diff
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplanResponse"
+  /replan/nl:
+    post:
+      operationId: replanItineraryInNaturalLanguage
+      tags: [greenroute]
+      summary: Parse a natural-language change and rebuild the trip
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NaturalReplanRequest"
+      responses:
+        "200":
+          description: Parsed changes, updated itinerary and comparison diff
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NaturalReplanResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +194,251 @@ components:
           type: string
       required:
         - status
+    Interest:
+      type: string
+      enum: [history, nature, waterfalls, beaches, temples, adventure, food, wildlife, hidden-gems]
+    Mode:
+      type: string
+      enum: [walk, metro, bus, train, auto, cab, ecab]
+    Strategy:
+      type: string
+      enum: [cheapest, fastest, greenest, balanced]
+    TripInput:
+      type: object
+      required: [startHub, days, budget, interests, pace, priority, walking, month, hiddenGems]
+      properties:
+        startHub: { type: string }
+        days: { type: integer, minimum: 1, maximum: 7 }
+        budget: { type: number, minimum: 1500, maximum: 50000 }
+        interests:
+          type: array
+          items: { $ref: "#/components/schemas/Interest" }
+        pace:
+          type: string
+          enum: [relaxed, balanced, packed]
+        priority: { $ref: "#/components/schemas/Strategy" }
+        walking:
+          type: string
+          enum: [low, medium, high]
+        month: { type: integer, minimum: 1, maximum: 12 }
+        hiddenGems: { type: boolean }
+        mustVisit:
+          type: array
+          items: { type: string }
+        excluded:
+          type: array
+          items: { type: string }
+    Hub:
+      type: object
+      required: [id, name, lat, lng, railConnected]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        lat: { type: number }
+        lng: { type: number }
+        railConnected: { type: boolean }
+        metro: { type: boolean }
+    Place:
+      type: object
+      required: [id, name, region, hub, lat, lng, tags, hiddenGem, fee, visitHrs, bestMonths, outdoor, wiki, desc]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        region: { type: string }
+        hub: { type: string }
+        lat: { type: number }
+        lng: { type: number }
+        tags:
+          type: array
+          items: { $ref: "#/components/schemas/Interest" }
+        hiddenGem: { type: boolean }
+        fee: { type: number }
+        visitHrs: { type: number }
+        bestMonths:
+          type: array
+          items: { type: integer }
+        outdoor: { type: boolean }
+        wiki: { type: string }
+        desc: { type: string }
+        metroStation: { type: string }
+    RankedPlace:
+      allOf:
+        - $ref: "#/components/schemas/Place"
+        - type: object
+          required: [matchScore, why]
+          properties:
+            matchScore: { type: number }
+            why: { type: string }
+    PlaceMedia:
+      type: object
+      required: [thumbnail, extract]
+      properties:
+        thumbnail: { type: ["string", "null"] }
+        extract: { type: ["string", "null"] }
+    Weather:
+      type: object
+      required: [tMax, rainMm, code, available]
+      properties:
+        tMax: { type: number }
+        rainMm: { type: number }
+        code: { type: integer }
+        available: { type: boolean }
+    LegOption:
+      type: object
+      required: [mode, distanceKm, minutes, cost, co2Kg, label]
+      properties:
+        mode: { $ref: "#/components/schemas/Mode" }
+        modes:
+          type: array
+          items: { $ref: "#/components/schemas/Mode" }
+        distanceKm: { type: number }
+        minutes: { type: integer }
+        cost: { type: number }
+        co2Kg: { type: number }
+        label: { type: string }
+    Coordinate:
+      type: array
+      items: { type: number }
+    Leg:
+      type: object
+      required: [fromId, toId, fromName, toName, options, chosen, geometry]
+      properties:
+        fromId: { type: string }
+        toId: { type: string }
+        fromName: { type: string }
+        toName: { type: string }
+        options:
+          type: array
+          items: { $ref: "#/components/schemas/LegOption" }
+        chosen:
+          type: object
+          required: [cheapest, fastest, greenest, balanced]
+          properties:
+            cheapest: { $ref: "#/components/schemas/LegOption" }
+            fastest: { $ref: "#/components/schemas/LegOption" }
+            greenest: { $ref: "#/components/schemas/LegOption" }
+            balanced: { $ref: "#/components/schemas/LegOption" }
+        geometry:
+          type: array
+          items: { $ref: "#/components/schemas/Coordinate" }
+    Stop:
+      type: object
+      required: [place, arrive, depart, matchScore, why]
+      properties:
+        place: { $ref: "#/components/schemas/Place" }
+        arrive: { type: string }
+        depart: { type: string }
+        matchScore: { type: number }
+        why: { type: string }
+        weather:
+          anyOf:
+            - $ref: "#/components/schemas/Weather"
+            - type: "null"
+    Day:
+      type: object
+      required: [dayNo, stops, legs, entryCost, foodCost, stayCost, narrative]
+      properties:
+        dayNo: { type: integer }
+        stops:
+          type: array
+          items: { $ref: "#/components/schemas/Stop" }
+        legs:
+          type: array
+          items: { $ref: "#/components/schemas/Leg" }
+        entryCost: { type: number }
+        foodCost: { type: number }
+        stayCost: { type: number }
+        narrative: { type: string }
+    StrategyTotals:
+      type: object
+      required: [cost, minutes, co2Kg, modeMix]
+      properties:
+        cost: { type: number }
+        minutes: { type: number }
+        co2Kg: { type: number }
+        modeMix:
+          type: object
+          additionalProperties: { type: number }
+    StrategyTotalsByName:
+      type: object
+      required: [cheapest, fastest, greenest, balanced]
+      properties:
+        cheapest: { $ref: "#/components/schemas/StrategyTotals" }
+        fastest: { $ref: "#/components/schemas/StrategyTotals" }
+        greenest: { $ref: "#/components/schemas/StrategyTotals" }
+        balanced: { $ref: "#/components/schemas/StrategyTotals" }
+    Suggestion:
+      type: object
+      required: [id, label, saving, description, changes]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        saving: { type: number }
+        description: { type: string }
+        changes:
+          type: object
+          additionalProperties: true
+    Itinerary:
+      type: object
+      required: [input, days, totals, baselineCo2Kg, ecoScore, overBudgetBy, suggestions]
+      properties:
+        input: { $ref: "#/components/schemas/TripInput" }
+        days:
+          type: array
+          items: { $ref: "#/components/schemas/Day" }
+        totals: { $ref: "#/components/schemas/StrategyTotalsByName" }
+        baselineCo2Kg: { type: number }
+        ecoScore: { type: number }
+        overBudgetBy: { type: number }
+        suggestions:
+          type: array
+          items: { $ref: "#/components/schemas/Suggestion" }
+    TripChanges:
+      type: object
+      properties:
+        budget: { type: number }
+        days: { type: integer, minimum: 1, maximum: 7 }
+        walking:
+          type: string
+          enum: [low, medium, high]
+        priority: { $ref: "#/components/schemas/Strategy" }
+        exclude: { type: array, items: { type: string } }
+        excludeInterests:
+          type: array
+          items: { $ref: "#/components/schemas/Interest" }
+    ReplanRequest:
+      type: object
+      required: [input, changes]
+      properties:
+        input: { $ref: "#/components/schemas/TripInput" }
+        changes: { $ref: "#/components/schemas/TripChanges" }
+    NaturalReplanRequest:
+      type: object
+      required: [input, text]
+      properties:
+        input: { $ref: "#/components/schemas/TripInput" }
+        text: { type: string, minLength: 1, maxLength: 1000 }
+    ReplanDiff:
+      type: object
+      required: [removedStops, addedStops, modeChanges, costDelta, timeDelta, co2Delta]
+      properties:
+        removedStops: { type: array, items: { type: string } }
+        addedStops: { type: array, items: { type: string } }
+        modeChanges: { type: array, items: { type: string } }
+        costDelta: { type: number }
+        timeDelta: { type: number }
+        co2Delta: { type: number }
+    ReplanResponse:
+      type: object
+      required: [itinerary, diff]
+      properties:
+        itinerary: { $ref: "#/components/schemas/Itinerary" }
+        diff: { $ref: "#/components/schemas/ReplanDiff" }
+    NaturalReplanResponse:
+      type: object
+      required: [changes, itinerary, diff]
+      properties:
+        changes: { $ref: "#/components/schemas/TripChanges" }
+        itinerary: { $ref: "#/components/schemas/Itinerary" }
+        diff: { $ref: "#/components/schemas/ReplanDiff" }
 
