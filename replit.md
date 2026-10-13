@@ -1,45 +1,45 @@
-# [Project name]
+# GreenRoute Karnataka
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A demo-ready trip planner for discovering Karnataka and comparing day-by-day routes by cost, travel time, and estimated emissions.
 
-## Run & Operate
+## Run & operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `PORT=5173 BASE_PATH=/ pnpm --filter @workspace/greenroute-karnataka run dev` — start the Vite web app locally.
+- `PORT=5000 pnpm --filter @workspace/api-server run dev` — build and start the API on port 5000.
+- `pnpm run typecheck` — type-check workspace libraries and artifacts.
+- `PORT=5000 BASE_PATH=/ pnpm run build` — type-check and build all workspace packages outside Replit's artifact runner.
+- `pnpm --filter @workspace/api-spec run codegen` — regenerate API clients and Zod schemas from the OpenAPI spec.
+
+The API server requires `PORT`. AI credentials are optional: `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` enables optional itinerary narration and natural-language replanning; deterministic fallbacks remain available.
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- pnpm workspace, Node.js 24, TypeScript 5.9.
+- Web app: React, Vite, Wouter, TanStack Query, Leaflet.
+- API: Express 5; contracts and generated clients are shared through workspace packages.
+- Optional persistence package: PostgreSQL and Drizzle ORM.
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/greenroute-karnataka/src/App.tsx` — planner, route results, comparison, place explorer, saved trips, and replanning UI.
+- `artifacts/greenroute-karnataka/src/components/route-map.tsx` — Leaflet map and route layers.
+- `artifacts/api-server/src/routes/greenroute.ts` — health, hubs, places, weather, itinerary, and replanning endpoints.
+- `artifacts/api-server/src/greenroute/engine.ts` — route scoring, transport options, itinerary construction, and replanning.
+- `artifacts/api-server/src/data/greenroute.ts` — supported hubs, places, and rail connections.
+- `lib/api-spec/openapi.yaml` — API source of truth; regenerate generated packages after contract changes.
+- `lib/api-zod` and `lib/api-client-react` — generated validation schemas and React API hooks.
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
-
-## Product
-
-_Describe the high-level user-facing capabilities of this app once they exist._
-
-## User preferences
-
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- The API builds routes deterministically; optional AI only enhances narration and parses natural-language changes.
+- Route comparisons use the same itinerary and vary transport-mode selection across cheapest, fastest, greenest, and balanced strategies.
+- The browser stores saved trips and the active itinerary in local storage; no account is required.
+- Road routing, weather, and place-media lookups use cached external data with fallbacks for unavailable services.
+- Cost, time, emissions, and place details are planning estimates, not booking or live-service guarantees.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- Run commands from the workspace root; use pnpm rather than npm or yarn.
+- Keep `lib/api-spec/openapi.yaml` in sync with API routes, then run codegen before type-checking.
+- `DATABASE_URL` is needed only for database operations; the current trip-planning API does not require database access.
+- Check local transport, permits, opening hours, and weather with operators before travelling.
