@@ -23,6 +23,14 @@ const presetList: {title:string;sub:string;input:TripInput;symbol:string}[] = [
 type SavedTrip = {id:string;name:string;savedAt:string;itinerary:Itinerary};
 type TripDiff = {removedStops:string[];addedStops:string[];modeChanges:string[];costDelta:number;timeDelta:number;co2Delta:number};
 const getSaved = (): SavedTrip[] => { try { return JSON.parse(localStorage.getItem('greenroute-trips') || '[]') as SavedTrip[]; } catch { return []; } };
+const getCurrentTrip = (): Itinerary|null => {
+  try {
+    const trip = JSON.parse(localStorage.getItem('greenroute-current-trip') || 'null') as Itinerary|null;
+    return trip?.input && Array.isArray(trip.days) ? trip : null;
+  } catch {
+    return null;
+  }
+};
 const money = (n:number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 const hours = (n:number) => `${Math.floor(n/60)}h ${Math.round(n%60)}m`;
 const arrivalTimes = (day:Itinerary['days'][number],strategy:Strategy) => {
@@ -38,10 +46,10 @@ const arrivalTimes = (day:Itinerary['days'][number],strategy:Strategy) => {
 
 function App() {
   const [location,setLocation] = useLocation();
-  const [itinerary,setItinerary] = useState<Itinerary|null>(null);
-  const [input,setInput] = useState<TripInput>(initialInput);
+  const [itinerary,setItinerary] = useState<Itinerary|null>(()=>getCurrentTrip());
+  const [input,setInput] = useState<TripInput>(()=>getCurrentTrip()?.input ?? initialInput);
   const [step,setStep] = useState(1);
-  const [strategy,setStrategy] = useState<Strategy>('balanced');
+  const [strategy,setStrategy] = useState<Strategy>(()=>getCurrentTrip()?.input.priority ?? 'balanced');
   const [selectedDay,setSelectedDay] = useState(0);
   const [drawer,setDrawer] = useState(false);
   const [dark,setDark] = useState(()=>localStorage.getItem('greenroute-theme')==='dark');
@@ -72,6 +80,14 @@ function App() {
   const explorePlaces = useMemo(()=> (placesQuery.data ?? []).filter(p=>!query || p.name.toLowerCase().includes(query.toLowerCase()) || p.region.toLowerCase().includes(query.toLowerCase()) || p.tags.some(t=>interestNames[t].toLowerCase().includes(query.toLowerCase()))),[placesQuery.data,query]);
 
   useEffect(()=>{document.documentElement.classList.toggle('dark',dark);localStorage.setItem('greenroute-theme',dark?'dark':'light')},[dark]);
+  useEffect(()=>{
+    if (!itinerary) {
+      localStorage.removeItem('greenroute-current-trip');
+      return;
+    }
+    const currentTrip = {...itinerary,input:{...itinerary.input,priority:strategy}};
+    localStorage.setItem('greenroute-current-trip',JSON.stringify(currentTrip));
+  },[itinerary,strategy]);
   useEffect(()=>{if(location==='/plan') setStep(1)},[location]);
   useEffect(()=>{if(itinerary) setReplanChanges({budget:itinerary.input.budget,days:itinerary.input.days,walking:itinerary.input.walking,priority:strategy})},[itinerary,strategy]);
   const notify = (message:string)=>{setNotice(message);window.setTimeout(()=>setNotice(''),2800)};
