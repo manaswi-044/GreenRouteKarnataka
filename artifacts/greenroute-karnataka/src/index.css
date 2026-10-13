@@ -34,7 +34,7 @@
 :root{--ink:#0F172A;--moss:#064E3B;--lime:#10B981;--clay:#F59E0B}
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{background:hsl(var(--background))}
 button,a,input,select,textarea{-webkit-tap-highlight-color:transparent}
-.dark :root{--ink:#E5E7EB}
+.dark{--ink:#E5E7EB;--moss:#064E3B;--lime:#10B981;--clay:#F59E0B}
 .display{font-family:var(--app-font-serif);letter-spacing:-.055em}.mono{font-family:var(--app-font-mono)}
 .route-shell{min-height:100dvh}.topbar{height:76px;display:flex;align-items:center;gap:34px;padding:0 clamp(18px,4vw,60px);border-bottom:1px solid hsl(var(--border));background:hsl(var(--background)/.94);position:sticky;top:0;z-index:40;backdrop-filter:blur(16px)}
 .brand{font:800 20px var(--app-font-serif);letter-spacing:-1.1px;color:hsl(var(--foreground));display:flex;align-items:center;gap:10px;text-decoration:none;white-space:nowrap}

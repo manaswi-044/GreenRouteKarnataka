@@ -26,6 +26,14 @@ const modeColors: Record<Mode, string> = {
   walk: "#22c55e", metro: "#8b5cf6", bus: "#f59e0b", train: "#0ea5e9",
   auto: "#f97316", cab: "#ef4444", ecab: "#14b8a6",
 };
+const metroStations = [
+  { name: "Majestic", lat: 12.9757, lng: 77.5728 },
+  { name: "Vidhana Soudha", lat: 12.9795, lng: 77.5911 },
+  { name: "Cubbon Park", lat: 12.9810, lng: 77.5970 },
+  { name: "MG Road", lat: 12.9756, lng: 77.6068 },
+  { name: "Lalbagh", lat: 12.9468, lng: 77.5802 },
+  { name: "KR Market", lat: 12.9626, lng: 77.5769 },
+];
 
 export interface RoadRoute {
   distanceKm: number;
@@ -165,11 +173,14 @@ function recommendationScore(
     + 5 * proximity
     + (input.mustVisit?.includes(place.id) ? 100 : 0),
   ));
-  const labels = matched.length ? matched.map((tag) => tag.replace("-", " ")).join(", ") : "your trip";
-  const season = place.bestMonths.includes(input.month) ? "a good time to visit" : "a year-round option";
+  const labels = matched.length ? matched.map((tag) => tag.replace("-", " ")).join(" and ") : "your trip";
+  const monthName = new Intl.DateTimeFormat("en", { month: "long" }).format(new Date(2020, input.month - 1, 1));
+  const seasonalNote = place.bestMonths.includes(input.month)
+    ? `best in ${monthName}`
+    : `best in ${place.bestMonths.map((month) => new Intl.DateTimeFormat("en", { month: "short" }).format(new Date(2020, month - 1, 1))).join(", ")}`;
   return {
     matchScore,
-    why: `Matches ${labels}; ${season}; ₹${place.fee} entry.`,
+    why: `Matches your interest in ${labels}, ${seasonalNote}, ₹${place.fee} entry.`,
   };
 }
 
@@ -188,13 +199,36 @@ export function rankPlaces(input: Partial<TripInput> & { interests?: Interest[] 
     excluded: input.excluded ?? [],
   } as TripInput;
   const excluded = new Set(fullInput.excluded ?? []);
+  const mustVisit = new Set(fullInput.mustVisit ?? []);
   return places
     .filter((place) => !excluded.has(place.id))
     .map((place) => ({ ...place, ...recommendationScore(place, fullInput) }))
-    .sort((a, b) => b.matchScore - a.matchScore || a.name.localeCompare(b.name));
+    .sort((a, b) =>
+      Number(mustVisit.has(b.id)) - Number(mustVisit.has(a.id))
+      || b.matchScore - a.matchScore
+      || a.name.localeCompare(b.name),
+    );
 }
 
-function optionsFor(distanceKm: number, a: Place | null, b: Place, walking: TripInput["walking"], metroAllowed: boolean, trainAllowed: boolean): LegOption[] {
+function closestMetroStation(point: { lat: number; lng: number }, preferred?: string) {
+  if (preferred) {
+    const station = metroStations.find((entry) => entry.name === preferred);
+    if (station && haversine(point, station) <= 1.2) return station;
+  }
+  const nearest = metroStations
+    .map((station) => ({ station, distance: haversine(point, station) }))
+    .sort((a, b) => a.distance - b.distance)[0];
+  return nearest && nearest.distance <= 1.2 ? nearest.station : undefined;
+}
+
+function optionsFor(
+  distanceKm: number,
+  b: Place,
+  walking: TripInput["walking"],
+  metroRoute: { from: string; to: string } | undefined,
+  trainAllowed: boolean,
+  local: boolean,
+): LegOption[] {
   const tolerance = { low: 0.8, medium: 2, high: 4 }[walking];
   const result: LegOption[] = [];
   if (distanceKm <= tolerance) {
@@ -212,24 +246,30 @@ function optionsFor(distanceKm: number, a: Place | null, b: Place, walking: Trip
     return 0;
   };
   const roadModes: Mode[] = ["bus", "auto", "cab"];
-  if (a?.hub === b.hub && ["Bengaluru", "Mysuru", "Mangaluru"].includes(b.hub) || distanceKm <= 80) roadModes.push("ecab");
+  if ((local && ["Bengaluru", "Mysuru", "Mangaluru"].includes(b.hub)) || distanceKm <= 80) roadModes.push("ecab");
+  const speedFor = (mode: Mode) => {
+    if (mode === "bus") return local ? 18 : 42;
+    if (mode === "cab") return local ? 24 : 55;
+    if (mode === "ecab") return local ? 24 : 50;
+    return speed[mode];
+  };
   for (const mode of roadModes) {
-    const minutes = Math.round(distanceKm / speed[mode] * 60) + waitCost(mode);
-    const transport = mode === "bus" ? "KSRTC / city bus" : mode === "auto" ? "Auto rickshaw" : mode === "ecab" ? "Electric cab" : "Cab";
+    const minutes = Math.round(distanceKm / speedFor(mode) * 60) + waitCost(mode);
+    const transport = mode === "bus" ? (local ? "City bus" : "KSRTC intercity bus") : mode === "auto" ? "Auto rickshaw" : mode === "ecab" ? "Electric cab" : "Cab";
     result.push({
       mode, modes: [mode], distanceKm, minutes, cost: fare(mode, distanceKm),
       co2Kg: Number((distanceKm * emissions[mode] / 1000).toFixed(2)),
       label: transport,
     });
   }
-  if (metroAllowed && b.metroStation) {
+  if (metroRoute) {
     const metroDistance = Math.max(1.1, distanceKm * 0.78);
     result.push({
       mode: "metro", modes: ["walk", "metro", "walk"], distanceKm: metroDistance,
       minutes: Math.round(metroDistance / speed.metro * 60) + waits.metro + 8,
       cost: Math.min(60, Math.round(10 + metroDistance * 2.5)),
       co2Kg: Number((metroDistance * emissions.metro / 1000).toFixed(2)),
-      label: `Namma Metro via ${b.metroStation}`,
+      label: `Namma Metro ${metroRoute.from} → ${metroRoute.to}`,
     });
   }
   if (trainAllowed) {
@@ -274,18 +314,66 @@ async function makeLeg(
 ): Promise<Leg> {
   const road = await roadRoute(from, to);
   const hubsPair = [from.hub, to.hub].sort().join("|");
+  const fromHub = hubs.find((hub) => hub.id === from.hub);
+  const toHub = hubs.find((hub) => hub.id === to.hub);
   const trainAllowed = from.hub !== to.hub
     && haversine(from, to) > 80
+    && Boolean(fromHub?.railConnected && toHub?.railConnected)
     && railPairs.has(hubsPair);
-  const metroAllowed = from.hub === "Bengaluru"
-    && to.hub === "Bengaluru"
-    && Boolean(to.metroStation);
-  const options = optionsFor(road.distanceKm, from.hub === to.hub ? (places.find((p) => p.id === fromId) ?? null) : null, to, input.walking, metroAllowed, trainAllowed);
+  const local = from.hub === to.hub;
+  const fromPlace = places.find((place) => place.id === fromId);
+  const fromStation = fromId === `hub:${from.hub}` && fromHub?.metro
+    ? closestMetroStation(from)
+    : fromPlace ? closestMetroStation(fromPlace, fromPlace.metroStation) : undefined;
+  const toStation = closestMetroStation(to, to.metroStation);
+  const metroRoute = local && from.hub === "Bengaluru" && fromStation && toStation
+    ? { from: fromStation.name, to: toStation.name }
+    : undefined;
+  const options = optionsFor(road.distanceKm, to, input.walking, metroRoute, trainAllowed, local);
   return {
     fromId, toId: to.id, fromName, toName: to.name, options,
     chosen: chooseOptions(options, input.priority),
     geometry: road.geometry,
   };
+}
+
+function nearestNeighbourOrder<T extends { lat: number; lng: number; matchScore: number }>(
+  start: { lat: number; lng: number },
+  placesToOrder: T[],
+) {
+  const remaining = [...placesToOrder];
+  const ordered: T[] = [];
+  let current = start;
+  while (remaining.length) {
+    remaining.sort((a, b) =>
+      haversine(current, a) - haversine(current, b)
+      || b.matchScore - a.matchScore,
+    );
+    const next = remaining.shift();
+    if (!next) break;
+    ordered.push(next);
+    current = next;
+  }
+  for (let pass = 0; pass < ordered.length; pass += 1) {
+    let improved = false;
+    for (let left = 0; left < ordered.length - 1; left += 1) {
+      for (let right = left + 1; right < ordered.length; right += 1) {
+        const before = left === 0 ? start : ordered[left - 1]!;
+        const first = ordered[left]!;
+        const last = ordered[right]!;
+        const after = ordered[right + 1];
+        const oldDistance = haversine(before, first)
+          + (after ? haversine(last, after) : 0);
+        const newDistance = haversine(before, last)
+          + (after ? haversine(first, after) : 0);
+        if (newDistance + 0.001 >= oldDistance) continue;
+        ordered.splice(left, right - left + 1, ...ordered.slice(left, right + 1).reverse());
+        improved = true;
+      }
+    }
+    if (!improved) break;
+  }
+  return ordered;
 }
 
 function clusterPlaces(input: TripInput, scored: ReturnType<typeof rankPlaces>) {
@@ -300,18 +388,25 @@ function clusterPlaces(input: TripInput, scored: ReturnType<typeof rankPlaces>) 
   const clusters = [...groups.entries()].map(([hubId, group]) => {
     const hub = hubs.find((entry) => entry.id === hubId) ?? start;
     const top = group.slice(0, count);
-    const value = top.reduce((total, item) => total + item.matchScore, 0);
+    const value = top.length ? top.reduce((total, item) => total + item.matchScore, 0) / top.length : 0;
     return { hubId, hub, group, value, distance: haversine(start, hub) };
   });
   const order: typeof clusters = [];
   const remaining = [...clusters];
   let previous = start;
+  const localIndex = remaining.findIndex((cluster) => cluster.hubId === start.id);
+  const localCluster = remaining[localIndex];
+  if (input.days <= 2 && localCluster && localCluster.group.length >= 4) {
+    order.push(localCluster, localCluster);
+    remaining.splice(localIndex, 1);
+    previous = localCluster.hub;
+  }
   while (remaining.length && order.length < input.days) {
     const eligible = remaining.filter((cluster) => order.length === 0 || haversine(previous, cluster.hub) <= 350);
     const pool = eligible.length ? eligible : remaining;
     pool.sort((a, b) => {
       const score = (entry: typeof clusters[number]) =>
-        entry.value - 0.22 * haversine(previous, entry.hub) - (entry.hubId === previous.id ? 0 : 4);
+        entry.value - 0.5 * haversine(previous, entry.hub) - (entry.hubId === previous.id ? 0 : 4);
       return score(b) - score(a);
     });
     const selected = pool[0];
@@ -327,21 +422,30 @@ function clusterPlaces(input: TripInput, scored: ReturnType<typeof rankPlaces>) 
   let previousPlace: Place | null = null;
   const assigned = new Set<string>();
   for (const cluster of order) {
-    let selected = cluster.group.filter((entry) => !assigned.has(entry.id)).slice(0, count);
-    if (!selected.length) selected = scored.filter((entry) => !assigned.has(entry.id)).slice(0, count);
     const origin = previousPlace ?? cluster.hub;
-    selected.sort((a, b) => haversine(origin, a) - haversine(origin, b));
+    let candidates = cluster.group.filter((entry) => !assigned.has(entry.id));
+    if (!candidates.length) candidates = scored.filter((entry) => !assigned.has(entry.id));
+    const selected = nearestNeighbourOrder(origin, candidates).slice(0, count);
     let hours = 0;
+    let currentPlace: { lat: number; lng: number } = previousPlace ?? cluster.hub;
+    const routeSpeed = cluster.hubId === input.startHub ? 24 : 42;
     const feasible = selected.filter((entry) => {
-      const transfer = previousPlace ? haversine(previousPlace, entry) / 42 : haversine(cluster.hub, entry) / 42;
+      const transfer = haversine(currentPlace, entry) / routeSpeed;
       const next = hours + entry.visitHrs + transfer;
-      if (next > maxHours && days.length + 1 < order.length) return false;
+      if (next > maxHours) return false;
       hours = next;
+      currentPlace = entry;
       return true;
     });
     const mustVisit = (input.mustVisit ?? []).map((id) => scored.find((entry) => entry.id === id && !assigned.has(id))).filter(Boolean);
     for (const required of mustVisit) {
-      if (required && !feasible.some((entry) => entry.id === required.id) && feasible.length < count) feasible.push(required);
+      if (!required || feasible.some((entry) => entry.id === required.id) || feasible.length >= count) continue;
+      const from = feasible.at(-1) ?? origin;
+      const travel = haversine(from, required) / routeSpeed;
+      if (hours + travel + required.visitHrs <= maxHours) {
+        feasible.push(required);
+        hours += travel + required.visitHrs;
+      }
     }
     const day = feasible.length ? feasible : selected.slice(0, 1);
     day.forEach((entry) => assigned.add(entry.id));
@@ -365,10 +469,7 @@ export async function buildItinerary(input: TripInput): Promise<Itinerary> {
   let previous: Place | null = null;
   for (let index = 0; index < selectedDays.length; index++) {
     const selected = selectedDays[index] ?? [];
-    const dayPlaces = [...selected].sort((a, b) =>
-      (b.matchScore + 100) * Math.exp(-haversine(previous ?? startHub, b) / 90)
-      - (a.matchScore + 100) * Math.exp(-haversine(previous ?? startHub, a) / 90),
-    );
+    const dayPlaces: ReturnType<typeof rankPlaces> = nearestNeighbourOrder<ReturnType<typeof rankPlaces>[number]>(previous ?? startHub, [...selected]);
     const dayOrigin = previous ?? { ...startHub, hub: startHub.id };
     const legs = await Promise.all(dayPlaces.map((scored, stopIndex) => {
       const from = stopIndex === 0 ? dayOrigin : dayPlaces[stopIndex - 1]!;
@@ -460,6 +561,16 @@ export async function buildItinerary(input: TripInput): Promise<Itinerary> {
   const cutSaving = input.days > 1
     ? Math.round((totals[input.priority].cost - days[0].entryCost) / input.days)
     : 0;
+  const perDayBudget = input.budget / Math.max(1, input.days);
+  const lowerPerDayBudget = perDayBudget >= 3000 ? 2500 : perDayBudget >= 1500 ? 1400 : perDayBudget;
+  const lowerTierBudget = Math.max(1500, Math.round(lowerPerDayBudget * input.days));
+  const lowerTierPerDay = lowerTierBudget / Math.max(1, input.days);
+  const foodTierCost = (amount: number) => amount < 1500 ? 400 : amount < 3000 ? 700 : 1200;
+  const stayTierCost = (amount: number) => amount < 1500 ? 700 : amount < 3000 ? 1800 : 3500;
+  const tierSaving = Math.max(0,
+    (foodTierCost(perDayBudget) - foodTierCost(lowerTierPerDay)) * input.days
+    + (stayTierCost(perDayBudget) - stayTierCost(lowerTierPerDay)) * Math.max(0, input.days - 1),
+  );
   const suggestions = [
     ...(cheapestSaving > 0 ? [{
       id: "switch-cheapest",
@@ -482,8 +593,16 @@ export async function buildItinerary(input: TripInput): Promise<Itinerary> {
       description: "Remove a day of food, stay and travel costs.",
       changes: { days: input.days - 1 },
     }] : []),
+    ...(tierSaving > 0 ? [{
+      id: "basic-stay-food",
+      label: "Use simpler stays and meals",
+      saving: tierSaving,
+      description: "Keep the route, with a lower food and accommodation allowance.",
+      changes: { budget: lowerTierBudget },
+    }] : []),
   ].sort((a, b) => b.saving - a.saving).slice(0, 3);
 
+  await addOptionalNarratives(days, input);
   return {
     input,
     days,
@@ -511,23 +630,141 @@ export async function replan(input: TripInput, changes: Partial<TripInput> & { e
   return { itinerary, diff: compareItineraries(oldItinerary, itinerary) };
 }
 
-export function parseNaturalChanges(text: string, input: TripInput): Partial<TripInput> {
-  const changes: Partial<TripInput> = {};
+export function parseNaturalChanges(text: string, input: TripInput): Partial<TripInput> & { exclude?: string[]; excludeInterests?: Interest[] } {
+  const changes: Partial<TripInput> & { exclude?: string[]; excludeInterests?: Interest[] } = {};
   const amount = text.match(/(?:₹|rs\.?\s*)\s*([\d,]+)|\b([\d,]+)\s*(?:rupees|inr)\b/i);
   if (amount) {
     const value = Number((amount[1] ?? amount[2]).replaceAll(",", ""));
     if (Number.isFinite(value)) changes.budget = Math.min(50000, Math.max(1500, value));
   }
-  if (/hate walking|no walking|less walking|low walking|avoid walking|limited walking|mobility/i.test(text)) changes.walking = "low";
+  if (/hate walking|no walking|walk less|less walking|low walking|avoid walking|limited walking|mobility/i.test(text)) changes.walking = "low";
   else if (/more walking|high walking|enjoy walking/i.test(text)) changes.walking = "high";
-  if (/greenest|greener|eco|sustainable/i.test(text)) changes.priority = "greenest";
-  else if (/fastest|quickest|in a hurry/i.test(text)) changes.priority = "fastest";
+  if (/greenest|greener|eco.?friendly|low carbon|less carbon|sustainable/i.test(text)) changes.priority = "greenest";
+  else if (/fastest|faster|quickest|in a hurry/i.test(text)) changes.priority = "fastest";
   else if (/cheapest|cheaper|save money|lower cost/i.test(text)) changes.priority = "cheapest";
+  else if (/\bbalanced?\b/i.test(text)) changes.priority = "balanced";
   const lessDay = text.match(/\b(?:one|1)\s+(?:less|fewer)\s+day\b|\bcut\s+(?:one|1)\s+day\b/i);
-  const explicitDays = text.match(/\b(\d)\s+days?\b/i);
+  const explicitDays = text.match(/\b(\d{1,2})\s+days?\b/i);
   if (lessDay) changes.days = Math.max(1, input.days - 1);
   else if (explicitDays) changes.days = Math.min(7, Math.max(1, Number(explicitDays[1])));
+  const normalized = text.toLowerCase().replace(/[^a-z0-9\s'-]/g, " ").replace(/\s+/g, " ");
+  if (/\b(skip|remove|drop|avoid)\b/i.test(normalized)) {
+    changes.exclude = places.filter((place) => {
+      const name = place.name.toLowerCase().replace(/[^a-z0-9\s'-]/g, " ").replace(/\s+/g, " ").trim();
+      return name.length > 4 && normalized.includes(name);
+    }).map((place) => place.id);
+  }
+  const interestWords: Record<Interest, string[]> = {
+    history: ["history", "historic places"], nature: ["nature"], waterfalls: ["waterfalls", "waterfall"],
+    beaches: ["beaches", "beach"], temples: ["temples", "temple"], adventure: ["adventure"],
+    food: ["food"], wildlife: ["wildlife", "animals"], "hidden-gems": ["hidden gems"],
+  };
+  const excludedInterests = (Object.entries(interestWords) as [Interest, string[]][])
+    .filter(([, terms]) => terms.some((term) => new RegExp(`\\b(?:no|skip|less|avoid)\\s+(?:the\\s+)?${term.replace(" ", "\\s+")}\\b`, "i").test(normalized)))
+    .map(([interest]) => interest);
+  if (excludedInterests.length) changes.excludeInterests = excludedInterests;
   return changes;
+}
+
+async function optionalAIText(system: string, prompt: string): Promise<string | undefined> {
+  const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
+  const openAIKey = process.env.OPENAI_API_KEY?.trim();
+  if (anthropicKey) {
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": anthropicKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-3-5-haiku-latest",
+          max_tokens: 8192,
+          system,
+          messages: [{ role: "user", content: prompt }],
+        }),
+        signal: AbortSignal.timeout(6000),
+      });
+      if (!response.ok) throw new Error(`Anthropic ${response.status}`);
+      const body = await response.json() as { content?: Array<{ type?: string; text?: string }> };
+      const text = body.content?.filter((block) => block.type === "text").map((block) => block.text ?? "").join("").trim();
+      if (text) return text;
+    } catch {
+      // Optional AI failures should leave the deterministic path in control.
+    }
+  }
+  if (openAIKey) {
+    try {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${openAIKey}` },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          max_tokens: 8192,
+          messages: [{ role: "system", content: system }, { role: "user", content: prompt }],
+        }),
+        signal: AbortSignal.timeout(6000),
+      });
+      if (!response.ok) throw new Error(`OpenAI ${response.status}`);
+      const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+      const text = body.choices?.[0]?.message?.content?.trim();
+      if (text) return text;
+    } catch {
+      // Optional AI failures should leave the deterministic path in control.
+    }
+  }
+  return undefined;
+}
+
+async function addOptionalNarratives(days: Day[], input: TripInput) {
+  const prompt = JSON.stringify({
+    interests: input.interests,
+    month: new Intl.DateTimeFormat("en", { month: "long" }).format(new Date(2020, input.month - 1, 1)),
+    days: days.map((day) => ({
+      dayNo: day.dayNo,
+      places: day.stops.map((stop) => ({ name: stop.place.name, region: stop.place.region, description: stop.place.desc })),
+    })),
+  });
+  const response = await optionalAIText(
+    "Write a concise one-sentence travel narrative for each day in a Karnataka itinerary. Use only the provided places and descriptions; do not add unsupported facts. Return JSON only as {\"narratives\":[{\"dayNo\":1,\"text\":\"...\"}]}",
+    prompt,
+  );
+  if (!response) return;
+  try {
+    const parsed = JSON.parse(response.replace(/^```(?:json)?\s*|\s*```$/g, "")) as { narratives?: Array<{ dayNo?: number; text?: string }> };
+    for (const entry of parsed.narratives ?? []) {
+      const day = days.find((candidate) => candidate.dayNo === entry.dayNo);
+      if (day && typeof entry.text === "string" && entry.text.trim().length > 0) day.narrative = entry.text.trim().slice(0, 320);
+    }
+  } catch {
+    // Keep the deterministic day templates if the optional response is malformed.
+  }
+}
+
+export async function parseNaturalChangesWithLLM(text: string, input: TripInput) {
+  const fallback = parseNaturalChanges(text, input);
+  if (!process.env.ANTHROPIC_API_KEY?.trim() && !process.env.OPENAI_API_KEY?.trim()) return fallback;
+  const response = await optionalAIText(
+    "Convert the requested travel-plan changes to JSON only. Allowed keys: budget (integer INR), days (1-7), walking (low|medium|high), priority (cheapest|fastest|greenest|balanced), excludeInterests (array of supported interest ids). Omit unspecified keys.",
+    JSON.stringify({ request: text, current: { budget: input.budget, days: input.days, walking: input.walking, priority: input.priority, interests: input.interests } }),
+  );
+  if (!response) return fallback;
+  try {
+    const parsed = JSON.parse(response.replace(/^```(?:json)?\s*|\s*```$/g, "")) as Record<string, unknown>;
+    const safe: typeof fallback = { ...fallback };
+    if (typeof parsed.budget === "number" && Number.isFinite(parsed.budget)) safe.budget = Math.min(50000, Math.max(1500, Math.round(parsed.budget)));
+    if (typeof parsed.days === "number" && Number.isFinite(parsed.days)) safe.days = Math.min(7, Math.max(1, Math.round(parsed.days)));
+    if (parsed.walking === "low" || parsed.walking === "medium" || parsed.walking === "high") safe.walking = parsed.walking;
+    if (parsed.priority === "cheapest" || parsed.priority === "fastest" || parsed.priority === "greenest" || parsed.priority === "balanced") safe.priority = parsed.priority;
+    if (Array.isArray(parsed.excludeInterests)) {
+      const valid = parsed.excludeInterests.filter((interest): interest is Interest => ["history", "nature", "waterfalls", "beaches", "temples", "adventure", "food", "wildlife", "hidden-gems"].includes(String(interest)));
+      if (valid.length) safe.excludeInterests = valid;
+    }
+    return safe;
+  } catch {
+    return fallback;
+  }
 }
 
 export function compareItineraries(old: Itinerary, next: Itinerary): ReplanDiff {

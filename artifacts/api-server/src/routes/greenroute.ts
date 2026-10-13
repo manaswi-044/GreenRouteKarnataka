@@ -13,7 +13,7 @@ import { hubs, places } from "../data/greenroute";
 import {
   buildItinerary,
   forecast,
-  parseNaturalChanges,
+  parseNaturalChangesWithLLM,
   rankPlaces,
   replan,
   wikipediaMedia,
@@ -108,7 +108,7 @@ router.post("/replan/nl", async (req, res) => {
   const parsed = ReplanItineraryInNaturalLanguageBody.safeParse(req.body);
   if (!parsed.success) return badRequest(res, "Tell us what you would like to change.");
   const input = parsed.data.input as TripInput;
-  const changes = parseNaturalChanges(parsed.data.text, input);
+  const changes = await parseNaturalChangesWithLLM(parsed.data.text, input);
   try {
     const result = await replan(input, changes);
     res.json({ changes, ...result });

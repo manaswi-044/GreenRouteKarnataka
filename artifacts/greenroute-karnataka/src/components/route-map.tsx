@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import { divIcon, latLngBounds, type LatLngExpression } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { Hub, Itinerary, Mode, Strategy } from "@workspace/api-client-react";
+import { getGetPlaceMediaQueryKey, useGetPlaceMedia } from "@workspace/api-client-react";
+import type { Hub, Itinerary, Mode, Place, Strategy } from "@workspace/api-client-react";
 
 const dayColors = ["#10B981", "#0EA5E9", "#F59E0B", "#8B5CF6", "#EF4444", "#14B8A6", "#EC4899"];
 const modeColors: Record<Mode, string> = {
@@ -43,8 +44,20 @@ function MapViewport({ points, focused, resetKey }: {
   return null;
 }
 
+function PlaceMapPopup({ place, dayNo, arrival }: { place: Place; dayNo: number; arrival: string }) {
+  const media = useGetPlaceMedia(place.id, {
+    query: { enabled: true, queryKey: getGetPlaceMediaQueryKey(place.id) },
+  });
+  return <div className="map-popup">
+    {media.data?.thumbnail ? <img src={media.data.thumbnail} alt="" loading="lazy"/> : <div className="map-popup-fallback" aria-hidden="true"/>}
+    <strong>{place.name}</strong>
+    <span>Day {dayNo} · {arrival} · {place.region}</span>
+  </div>;
+}
+
 export function RouteMap({ days, selectedDay, strategy, startHub, hubs, focusedPlace, onFocusPlace, onSelectDay }: Props) {
   const [layer, setLayer] = useState<number | null>(selectedDay);
+  const [tileSource, setTileSource] = useState<"carto" | "osm" | "offline">("carto");
   useEffect(() => setLayer(selectedDay), [selectedDay]);
 
   const visibleDays = useMemo(
@@ -59,12 +72,16 @@ export function RouteMap({ days, selectedDay, strategy, startHub, hubs, focusedP
       <button type="button" className={layer === null ? "selected" : ""} onClick={() => setLayer(null)}>All days</button>
       {days.map((day, index) => <button type="button" key={day.dayNo} className={layer === index ? "selected" : ""} onClick={() => { setLayer(index); onSelectDay(index); }} style={{ "--layer-color": dayColors[index % dayColors.length] } as React.CSSProperties}>Day {day.dayNo}</button>)}
     </div>
-    <MapContainer center={[14.8, 75.7]} zoom={7} scrollWheelZoom={false} className="leaflet-container">
-      <TileLayer
-        attribution='&copy; OpenStreetMap contributors &copy; CARTO'
-        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+    <MapContainer center={[14.8, 75.7]} zoom={7} scrollWheelZoom={false} className={`leaflet-container ${tileSource === "offline" ? "tiles-offline" : ""}`}>
+      {tileSource !== "offline" && <TileLayer
+        key={tileSource}
+        attribution={tileSource === "carto" ? '&copy; OpenStreetMap contributors &copy; CARTO' : '&copy; OpenStreetMap contributors'}
+        url={tileSource === "carto"
+          ? "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"}
         maxZoom={19}
-      />
+        eventHandlers={{ tileerror: () => setTileSource((current) => current === "carto" ? "osm" : "offline") }}
+      />}
       {visibleDays.map(({ day, dayIndex }) => day.stops.map((stop, stopIndex) => {
         const coordinate: [number, number] = [stop.place.lat, stop.place.lng];
         const icon = divIcon({
@@ -83,12 +100,15 @@ export function RouteMap({ days, selectedDay, strategy, startHub, hubs, focusedP
             window.setTimeout(() => document.getElementById(`stop-${stop.place.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
           } }}
         >
-          <Popup><strong>{stop.place.name}</strong><br />Day {day.dayNo} · {stop.arrive} · {stop.place.region}</Popup>
+          <Popup><PlaceMapPopup place={stop.place} dayNo={day.dayNo} arrival={stop.arrive}/></Popup>
         </Marker>;
       }))}
       {visibleDays.map(({ day }) => day.legs.map((leg) => {
         const mode = leg.chosen[strategy].mode;
-        const geometry = leg.geometry?.map(([lat, lng]) => [lat, lng] as [number, number]) ?? [];
+        const roadModes: Mode[] = ["bus", "auto", "cab", "ecab"];
+        const geometry = roadModes.includes(mode)
+          ? leg.geometry?.map(([lat, lng]) => [lat, lng] as [number, number]) ?? []
+          : [];
         const stopIndex = day.stops.findIndex((stop) => stop.place.id === leg.toId);
         const target = day.stops[stopIndex]?.place;
         const source = stopIndex > 0
@@ -107,6 +127,7 @@ export function RouteMap({ days, selectedDay, strategy, startHub, hubs, focusedP
       }))}
       <MapViewport points={points} focused={focusedStop ? [focusedStop.place.lat, focusedStop.place.lng] : undefined} resetKey={`${layer}-${strategy}-${days.length}-${focusedPlace ?? ""}`} />
     </MapContainer>
+    {tileSource === "offline" && <div className="map-offline-notice" role="status">Map tiles unavailable · stops and route lines are still shown</div>}
     <div className="map-credit">KARNATAKA · © OPENSTREETMAP · CARTO</div>
   </div>;
 }

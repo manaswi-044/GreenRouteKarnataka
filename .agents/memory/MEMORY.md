@@ -1,0 +1,1 @@
+- [Generated client DOM iterable types](api-client-dom-iterable.md) — shared fetch-client typings need iterable DOM library support for response headers.
