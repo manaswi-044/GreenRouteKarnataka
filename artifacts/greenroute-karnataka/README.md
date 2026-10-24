@@ -11,6 +11,8 @@ From the workspace root, start the managed services:
 
 The app works without AI credentials. The Replit preview should use the registered **GreenRoute Karnataka AI** web artifact.
 
+The **Voice guide** route (`/translator`) lets travellers speak into their device microphone, translate the transcript between their language and Kannada or another Karnataka language, and play the translation aloud. It uses the browser Web Speech API, so microphone permission is required and support depends on the browser (Chrome, Edge and Safari are recommended). Typed input and the on-screen pronunciation remain available when voice recognition is unavailable.
+
 ## Demo routes
 
 The landing page includes three end-to-end presets:

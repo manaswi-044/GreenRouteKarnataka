@@ -99,6 +99,7 @@ export function LocalTranslatorPage({ defaultHub }: { defaultHub?: string }) {
   const [karnatakaLang, setKarnatakaLang] = useState<LanguageOption>(getInitialKarnatakaLang);
   const [inputText, setInputText] = useState('');
   const [isListening, setIsListening] = useState(false);
+  const [voiceError, setVoiceError] = useState('');
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [speechSpeed, setSpeechSpeed] = useState<number>(0.9);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -120,43 +121,65 @@ export function LocalTranslatorPage({ defaultHub }: { defaultHub?: string }) {
   // Setup Web Speech API for voice recording
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = true;
-      recognition.lang = fromLang.voiceCode || 'en-IN';
-
-      recognition.onstart = () => setIsListening(true);
-      recognition.onend = () => setIsListening(false);
-      recognition.onerror = () => setIsListening(false);
-
-      recognition.onresult = (event: any) => {
-        const transcript = Array.from(event.results)
-          .map((result: any) => result[0].transcript)
-          .join('');
-        setInputText(transcript);
-        if (event.results[0]?.isFinal) {
-          triggerTranslation(transcript, fromLang, toLang);
-        }
-      };
-
-      recognitionRef.current = recognition;
+    recognitionRef.current = null;
+    setVoiceError('');
+    if (!SpeechRecognition) {
+      setVoiceError('Voice recording is unavailable in this browser. You can still type and play translations aloud.');
+      return;
     }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = fromLang.voiceCode || 'en-IN';
+    recognition.onstart = () => {
+      setVoiceError('');
+      setIsListening(true);
+    };
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = (event: any) => {
+      setIsListening(false);
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        setVoiceError('Microphone access was blocked. Allow microphone access in your browser settings and try again.');
+      } else if (event.error !== 'aborted') {
+        setVoiceError('We could not hear that. Please try again or type the phrase instead.');
+      }
+    };
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((result: any) => result[0].transcript)
+        .join('');
+      setInputText(transcript);
+      const lastResult = event.results[event.results.length - 1];
+      if (lastResult?.isFinal && transcript.trim()) {
+        triggerTranslation(transcript, fromLang, toLang);
+      }
+    };
+    recognitionRef.current = recognition;
+
+    return () => {
+      recognition.onresult = null;
+      recognition.onend = null;
+      recognition.onerror = null;
+      recognition.stop();
+      recognitionRef.current = null;
+    };
   }, [fromLang, toLang]);
 
   const toggleListening = () => {
     if (!recognitionRef.current) {
-      alert('Voice recording is supported in Google Chrome, Microsoft Edge, and Safari on desktop and mobile.');
+      setVoiceError('Voice recording is supported in Google Chrome, Microsoft Edge, and Safari on desktop and mobile.');
       return;
     }
     if (isListening) {
       recognitionRef.current.stop();
     } else {
       try {
+        setVoiceError('');
         recognitionRef.current.lang = fromLang.voiceCode || 'en-IN';
         recognitionRef.current.start();
-      } catch (e) {
-        recognitionRef.current.stop();
+      } catch {
+        setVoiceError('The microphone is already active. Tap the button again to stop listening.');
       }
     }
   };
@@ -394,6 +417,7 @@ export function LocalTranslatorPage({ defaultHub }: { defaultHub?: string }) {
               <ArrowRight size={16} />
             </button>
           </div>
+          {voiceError && <p className="translator-voice-error" role="status">{voiceError}</p>}
         </form>
 
         {/* Active Live Result Card */}
