@@ -61,7 +61,7 @@ function App() {
   const [naturalText,setNaturalText] = useState('');
   const [replanDiff,setReplanDiff] = useState<TripDiff|null>(null);
   const [excludedStops,setExcludedStops] = useState<string[]>([]);
-  const [mobilePane,setMobilePane] = useState<'list'|'map'>('list');
+  const [mobilePane,setMobilePane] = useState<'list'|'map'>(() => window.innerWidth <= 760 ? 'map' : 'list');
   const [replanChanges,setReplanChanges] = useState({budget:16000,days:4,walking:'medium' as TripInput['walking'],priority:'balanced' as Strategy});
   const [exploreInterests,setExploreInterests] = useState<TripInput['interests']>([]);
   const [exploreMaxFee,setExploreMaxFee] = useState<number|undefined>(undefined);
@@ -299,6 +299,8 @@ function Trips({saved,load,duplicate,remove,onPlan}:{saved:SavedTrip[];load:(t:S
 function EmptyResult({onPlan}:{onPlan:()=>void}){return <main className="page-wrap trips-empty soft-card"><div className="empty-landscape"><span/><span/><span/></div><div className="eyebrow">YOUR NEXT ROUTE IS WAITING</div><h1 className="display">Start with a place.</h1><p>Tell us where you’re going and what you love. We’ll shape the days around it.</p><button className="btn-main" onClick={onPlan}>Build an itinerary <ArrowRight size={15}/></button></main>}
 
 function ReplanDrawer({close,values,setValues,busy,submit,text,setText,submitText,diff,stops,excluded,setExcluded}:{close:()=>void;values:{budget:number;days:number;walking:TripInput['walking'];priority:Strategy};setValues:(v:{budget:number;days:number;walking:TripInput['walking'];priority:Strategy})=>void;busy:boolean;submit:()=>void;text:string;setText:(s:string)=>void;submitText:()=>void;diff:TripDiff|null;stops:Place[];excluded:string[];setExcluded:(ids:string[])=>void}) {
+  const [aiStatus,setAiStatus] = useState<{enabled:boolean;provider:string|null}>();
+  useEffect(()=>{let active=true;fetch('/api/ai/status').then(response=>response.ok?response.json():Promise.reject(new Error('AI status unavailable'))).then(data=>{if(active&&typeof data.enabled==='boolean')setAiStatus({enabled:data.enabled,provider:typeof data.provider==='string'?data.provider:null})}).catch(()=>{if(active)setAiStatus({enabled:false,provider:null})});return()=>{active=false}},[]);
   const toggleExcluded=(id:string)=>setExcluded(excluded.includes(id)?excluded.filter(value=>value!==id):[...excluded,id]);
   const stopName=(id:string)=>stops.find(stop=>stop.id===id)?.name??id.replaceAll('-',' ').replace(/\b\w/g,letter=>letter.toUpperCase());
   return <div className="drawer-overlay" role="presentation" onClick={close}><aside className="replan-drawer" role="dialog" aria-modal="true" aria-labelledby="replan-title" onClick={e=>e.stopPropagation()}>
@@ -310,7 +312,7 @@ function ReplanDrawer({close,values,setValues,busy,submit,text,setText,submitTex
       <label className="form-label">Walking comfort</label><div className="priority-row">{(['low','medium','high'] as const).map(level=><button className={`priority-chip ${values.walking===level?'selected':''}`} key={level} onClick={()=>setValues({...values,walking:level})}>{level==='low'?'Low':level==='medium'?'Medium':'High'}</button>)}</div>
       <label className="form-label">Route priority</label><div className="priority-row">{(['balanced','greenest','cheapest','fastest'] as Strategy[]).map(s=><button className={`priority-chip ${values.priority===s?'selected':''}`} key={s} onClick={()=>setValues({...values,priority:s})}>{strategyNames[s]}</button>)}</div>
       <label className="form-label">Skip a place</label><div className="exclude-chips">{stops.map(stop=><button key={stop.id} className={excluded.includes(stop.id)?'selected':''} aria-pressed={excluded.includes(stop.id)} onClick={()=>toggleExcluded(stop.id)}>{excluded.includes(stop.id)?<Check size={12}/>:<Plus size={12}/>} {stop.name}</button>)}</div>
-      <label className="form-label">Or tell us in plain language</label><textarea className="field natural-input" value={text} onChange={e=>setText(e.target.value)} maxLength={1000} placeholder="I only have ₹3,000 and want to walk less…"/>
+      <label className="form-label">Or tell us in plain language <span className="ai-status"><Sparkles size={12}/>{aiStatus?.enabled?`AI ready · ${aiStatus.provider}`:'Smart fallback ready'}</span></label><textarea className="field natural-input" value={text} onChange={e=>setText(e.target.value)} maxLength={1000} placeholder="I only have ₹3,000 and want to walk less…"/>
       <div className="prompt-chips">{['I only have ₹3,000','Less walking','Make it greener'].map(example=><button key={example} onClick={()=>setText(example)}>{example}</button>)}</div><small className="character-count">{text.length}/1000</small>
     </div>
     {diff&&<section className="replan-diff" role="status" aria-live="polite"><div className="diff-heading"><Check size={17}/><div><b>Route updated</b><small>{diff.costDelta<0?`Saved ${money(Math.abs(diff.costDelta))}`:diff.costDelta>0?`Added ${money(diff.costDelta)} to the estimate`:'Trip cost unchanged'} · {diff.co2Delta>0?'+':''}{diff.co2Delta.toFixed(1)} kg CO₂</small></div></div>

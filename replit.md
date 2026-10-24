@@ -1,33 +1,38 @@
-# GreenRoute Karnataka
+# GreenRoute Karnataka AI
 
-A demo-ready trip planner for discovering Karnataka and comparing day-by-day routes by cost, travel time, and estimated emissions.
+An intelligent, eco-conscious Karnataka trip planner that calculates optimal multi-day routes across heritage, nature, coastal, and wildlife destinations with per-leg multi-modal transport comparisons and carbon emission scoring.
 
 ## Run & operate
 
+- `pnpm dev` — run both API server (port 5000) and Web App (port 3000) concurrently.
+- `pnpm dev:api` — run the API server alone (port 5000).
+- `pnpm dev:web` — run the React/Vite web application alone (port 3000).
 - `PORT=5173 BASE_PATH=/ pnpm --filter @workspace/greenroute-karnataka run dev` — start the Vite web app locally.
 - `PORT=5000 pnpm --filter @workspace/api-server run dev` — build and start the API on port 5000.
 - `pnpm run typecheck` — type-check workspace libraries and artifacts.
-- `PORT=5000 BASE_PATH=/ pnpm run build` — type-check and build all workspace packages outside Replit's artifact runner.
+- `pnpm run build` — type-check and build all workspace packages.
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API clients and Zod schemas from the OpenAPI spec.
+- Or run `run.bat` for one-click startup on Windows.
 
-The API server requires `PORT`. AI credentials are optional: `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` enables optional itinerary narration and natural-language replanning; deterministic fallbacks remain available.
+The API server requires `PORT`. AI credentials are optional: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GROQ_API_KEY` enables optional itinerary narration and natural-language replanning; deterministic fallbacks remain available.
 
 ## Stack
 
-- pnpm workspace, Node.js 24, TypeScript 5.9.
-- Web app: React, Vite, Wouter, TanStack Query, Leaflet.
-- API: Express 5; contracts and generated clients are shared through workspace packages.
-- Optional persistence package: PostgreSQL and Drizzle ORM.
+- **Monorepo**: pnpm workspaces, Node.js 24, TypeScript 5.9.
+- **Frontend**: React 19, Vite 7, TailwindCSS 4, Wouter routing, TanStack Query, Leaflet / React-Leaflet, Lucide icons, Recharts.
+- **API Server**: Express 5, Pino logger, CORS, esbuild bundle.
+- **Validation & Spec**: OpenAPI 3.1, Zod, Orval code generator.
+- **Routing & Intelligence**: OSRM, Open-Meteo, Wikipedia media, deterministic nearest-neighbour + 2-opt clustering, and optional Anthropic Claude / OpenAI / Groq integration.
+- **Optional persistence package**: PostgreSQL and Drizzle ORM.
 
-## Where things live
+## Key Features
 
-- `artifacts/greenroute-karnataka/src/App.tsx` — planner, route results, comparison, place explorer, saved trips, and replanning UI.
-- `artifacts/greenroute-karnataka/src/components/route-map.tsx` — Leaflet map and route layers.
-- `artifacts/api-server/src/routes/greenroute.ts` — health, hubs, places, weather, itinerary, and replanning endpoints.
-- `artifacts/api-server/src/greenroute/engine.ts` — route scoring, transport options, itinerary construction, and replanning.
-- `artifacts/api-server/src/data/greenroute.ts` — supported hubs, places, and rail connections.
-- `lib/api-spec/openapi.yaml` — API source of truth; regenerate generated packages after contract changes.
-- `lib/api-zod` and `lib/api-client-react` — generated validation schemas and React API hooks.
+1. **Intelligent Hub & Place Matching**: Ranks 40+ hand-curated Karnataka destinations across 13 major travel hubs.
+2. **Multi-Modal Route Optimization**: Evaluates 7 modes per leg across cheapest, fastest, greenest, and balanced strategies.
+3. **Eco Scoring & Carbon Intelligence**: Compares chosen route emissions against an all-cab baseline.
+4. **Interactive Mapping**: Leaflet maps with custom day markers, multi-modal route overlays, road geometry, and stop inspection.
+5. **Adaptive Replanning & Natural Language Assistant**: Supports budget, pace, walking, exclusion, and plain-language changes with deterministic and optional LLM parsing.
+6. **Trip Management**: Save, duplicate, compare, and share itineraries with local persistence.
 
 ## Architecture decisions
 

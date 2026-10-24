@@ -185,6 +185,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/NaturalReplanResponse"
+  /translate:
+    post:
+      operationId: translateSpeech
+      tags: [greenroute]
+      summary: Translate between tourist and Karnataka local languages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TranslateRequest"
+      responses:
+        "200":
+          description: Translated speech and text with phonetics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranslateResponse"
 components:
   schemas:
     HealthStatus:
@@ -441,4 +459,23 @@ components:
         changes: { $ref: "#/components/schemas/TripChanges" }
         itinerary: { $ref: "#/components/schemas/Itinerary" }
         diff: { $ref: "#/components/schemas/ReplanDiff" }
+    TranslateRequest:
+      type: object
+      required: [text, from, to]
+      properties:
+        text: { type: string }
+        from: { type: string }
+        to: { type: string }
+        context: { type: string }
+    TranslateResponse:
+      type: object
+      required: [translatedText, romanized, sourceLanguage, targetLanguage]
+      properties:
+        translatedText: { type: string }
+        romanized: { type: string }
+        sourceLanguage: { type: string }
+        targetLanguage: { type: string }
+        pronunciation: { type: string }
+        audioPhonetic: { type: string }
+        notes: { type: string }
 

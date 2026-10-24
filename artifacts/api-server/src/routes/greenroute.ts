@@ -6,6 +6,7 @@ import {
   HealthCheckResponse,
   ReplanItineraryBody,
   ReplanItineraryInNaturalLanguageBody,
+  TranslateSpeechBody,
   type Interest,
   type TripInput,
 } from "@workspace/api-zod";
@@ -18,6 +19,7 @@ import {
   replan,
   wikipediaMedia,
 } from "../greenroute/engine";
+import { translateText, supportedLanguages, curatedPhrases } from "../greenroute/translator";
 
 const router: IRouter = Router();
 const supportedInterests = new Set<Interest>([
@@ -31,6 +33,27 @@ function badRequest(res: Response, message: string) {
 
 router.get("/health", (_req, res) => {
   res.json(HealthCheckResponse.parse({ status: "ok" }));
+});
+
+router.get("/ai/status", (_req, res) => {
+  const anthropicEnabled = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+  const openAIEnabled = Boolean(process.env.OPENAI_API_KEY?.trim());
+  const groqEnabled = Boolean(process.env.GROQ_API_KEY?.trim());
+  const configured = process.env.AI_PROVIDER?.trim().toLowerCase();
+  const provider = configured === "openai" && openAIEnabled
+    ? "openai"
+    : configured === "groq" && groqEnabled
+      ? "groq"
+    : configured === "anthropic" && anthropicEnabled
+      ? "anthropic"
+      : anthropicEnabled
+        ? "anthropic"
+        : openAIEnabled
+          ? "openai"
+          : groqEnabled
+            ? "groq"
+            : null;
+  res.json({ enabled: provider !== null, provider });
 });
 
 router.get("/hubs", (_req, res) => {
@@ -115,6 +138,26 @@ router.post("/replan/nl", async (req, res) => {
   } catch (error) {
     req.log.error({ err: error }, "Unable to parse and replan GreenRoute itinerary");
     res.status(500).json({ error: "We couldn't update this itinerary just now. Please try again." });
+  }
+});
+
+router.get("/languages", (_req, res) => {
+  res.json(Object.values(supportedLanguages));
+});
+
+router.get("/phrases", (_req, res) => {
+  res.json(curatedPhrases);
+});
+
+router.post("/translate", async (req, res) => {
+  const parsed = TranslateSpeechBody.safeParse(req.body);
+  if (!parsed.success) return badRequest(res, "Please provide valid text and language selection.");
+  try {
+    const result = await translateText(parsed.data);
+    res.json(result);
+  } catch (error) {
+    req.log.error({ err: error }, "Error translating text");
+    res.status(500).json({ error: "Translation could not be completed." });
   }
 });
 

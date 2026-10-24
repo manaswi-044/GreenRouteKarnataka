@@ -33,6 +33,8 @@ export * from './strategyTotalsByName';
 export * from './strategyTotalsModeMix';
 export * from './suggestion';
 export * from './suggestionChanges';
+export * from './translateRequest';
+export * from './translateResponse';
 export * from './tripChanges';
 export * from './tripChangesWalking';
 export * from './tripInput';

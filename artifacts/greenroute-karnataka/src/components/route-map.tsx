@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import { Circle, CircleMarker, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import { divIcon, latLngBounds, type LatLngExpression } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { getGetPlaceMediaQueryKey, useGetPlaceMedia } from "@workspace/api-client-react";
@@ -55,9 +55,64 @@ function PlaceMapPopup({ place, dayNo, arrival }: { place: Place; dayNo: number;
   </div>;
 }
 
+function LocationControl() {
+  const map = useMap();
+  const [position, setPosition] = useState<[number, number]>();
+  const [accuracy, setAccuracy] = useState(0);
+  const [tracking, setTracking] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (!tracking) return;
+    if (!navigator.geolocation) {
+      setMessage("Location is not supported by this browser.");
+      setTracking(false);
+      return;
+    }
+    const watchId = navigator.geolocation.watchPosition(
+      (next) => {
+        const nextPosition: [number, number] = [next.coords.latitude, next.coords.longitude];
+        setPosition(nextPosition);
+        setAccuracy(next.coords.accuracy);
+        setMessage("");
+        map.flyTo(nextPosition, Math.max(map.getZoom(), 13), { duration: 0.8 });
+      },
+      () => {
+        setMessage("Allow location access to show your position.");
+        setTracking(false);
+      },
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 },
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [map, tracking]);
+
+  return <>
+    <div className="map-location-control">
+      <button
+        type="button"
+        className={tracking ? "tracking" : ""}
+        onClick={() => {
+          setMessage("");
+          setTracking((current) => !current);
+        }}
+        aria-pressed={tracking}
+        title="Use my live location"
+      >
+        <span className="location-dot" />
+        {tracking ? "Following you" : "Use my location"}
+      </button>
+      {message && <span role="status">{message}</span>}
+    </div>
+    {position && <>
+      <Circle center={position} radius={accuracy} pathOptions={{ color: "#2563eb", fillColor: "#60a5fa", fillOpacity: 0.12, weight: 1 }} />
+      <CircleMarker center={position} radius={8} pathOptions={{ color: "#fff", weight: 3, fillColor: "#2563eb", fillOpacity: 1 }} />
+    </>}
+  </>;
+}
+
 export function RouteMap({ days, selectedDay, strategy, startHub, hubs, focusedPlace, onFocusPlace, onSelectDay }: Props) {
   const [layer, setLayer] = useState<number | null>(selectedDay);
-  const [tileSource, setTileSource] = useState<"carto" | "osm" | "offline">("carto");
+  const [tileSource, setTileSource] = useState<"carto" | "osm" | "offline">("osm");
   useEffect(() => setLayer(selectedDay), [selectedDay]);
 
   const visibleDays = useMemo(
@@ -78,7 +133,7 @@ export function RouteMap({ days, selectedDay, strategy, startHub, hubs, focusedP
         attribution={tileSource === "carto" ? '&copy; OpenStreetMap contributors &copy; CARTO' : '&copy; OpenStreetMap contributors'}
         url={tileSource === "carto"
           ? "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-          : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"}
+          : "https://tile.openstreetmap.org/{z}/{x}/{y}.png"}
         maxZoom={19}
         eventHandlers={{ tileerror: () => setTileSource((current) => current === "carto" ? "osm" : "offline") }}
       />}
@@ -86,7 +141,7 @@ export function RouteMap({ days, selectedDay, strategy, startHub, hubs, focusedP
         const coordinate: [number, number] = [stop.place.lat, stop.place.lng];
         const icon = divIcon({
           className: "route-pin-wrap",
-          html: `<span class="route-pin" style="--pin-color:${dayColors[dayIndex % dayColors.length]}">${String(stopIndex + 1).padStart(2, "0")}</span>`,
+          html: `<span class="route-pin" style="--pin-color:${dayColors[dayIndex % dayColors.length]};--pin-delay:${stopIndex * 90}ms">${String(stopIndex + 1).padStart(2, "0")}</span>`,
           iconSize: [34, 34],
           iconAnchor: [17, 17],
         });
@@ -105,7 +160,7 @@ export function RouteMap({ days, selectedDay, strategy, startHub, hubs, focusedP
       }))}
       {visibleDays.map(({ day }) => day.legs.map((leg) => {
         const mode = leg.chosen[strategy].mode;
-        const roadModes: Mode[] = ["bus", "auto", "cab", "ecab"];
+        const roadModes: Mode[] = ["walk", "bus", "auto", "cab", "ecab"];
         const geometry = roadModes.includes(mode)
           ? leg.geometry?.map(([lat, lng]) => [lat, lng] as [number, number]) ?? []
           : [];
@@ -120,15 +175,16 @@ export function RouteMap({ days, selectedDay, strategy, startHub, hubs, focusedP
         return <Polyline
           key={`${day.dayNo}-${leg.fromId}-${leg.toId}-${strategy}`}
           positions={route}
-          pathOptions={{ color: modeColors[mode], weight: 4, opacity: 0.88, dashArray: mode === "walk" ? "7 8" : undefined }}
+          pathOptions={{ className: "route-line", color: modeColors[mode], weight: 4, opacity: 0.88, dashArray: mode === "walk" ? "7 8" : "1 12" }}
         >
           <Popup>{modeNames[mode]} · {leg.fromName} to {leg.toName}</Popup>
         </Polyline>;
       }))}
+      <LocationControl />
       <MapViewport points={points} focused={focusedStop ? [focusedStop.place.lat, focusedStop.place.lng] : undefined} resetKey={`${layer}-${strategy}-${days.length}-${focusedPlace ?? ""}`} />
     </MapContainer>
     {tileSource === "offline" && <div className="map-offline-notice" role="status">Map tiles unavailable · stops and route lines are still shown</div>}
-    <div className="map-credit">KARNATAKA · © OPENSTREETMAP · CARTO</div>
+    <div className="map-credit">KARNATAKA · © OPENSTREETMAP contributors</div>
   </div>;
 }
 

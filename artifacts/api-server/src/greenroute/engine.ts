@@ -632,20 +632,23 @@ export async function replan(input: TripInput, changes: Partial<TripInput> & { e
 
 export function parseNaturalChanges(text: string, input: TripInput): Partial<TripInput> & { exclude?: string[]; excludeInterests?: Interest[] } {
   const changes: Partial<TripInput> & { exclude?: string[]; excludeInterests?: Interest[] } = {};
-  const amount = text.match(/(?:₹|rs\.?\s*)\s*([\d,]+)|\b([\d,]+)\s*(?:rupees|inr)\b/i);
+  const amount = text.match(/(?:budget\s*(?:to|of|is|=|:)?\s*|under\s+|around\s+|max\s+|₹|rs\.?\s*)\s*([\d,]+)|\b([\d,]+)\s*(?:rupees|inr|budget)\b/i);
   if (amount) {
     const value = Number((amount[1] ?? amount[2]).replaceAll(",", ""));
     if (Number.isFinite(value)) changes.budget = Math.min(50000, Math.max(1500, value));
   }
-  if (/hate walking|no walking|walk less|less walking|low walking|avoid walking|limited walking|mobility/i.test(text)) changes.walking = "low";
-  else if (/more walking|high walking|enjoy walking/i.test(text)) changes.walking = "high";
+  if (/hate walking|no walking|walk less|less walking|low walking|avoid walking|limited walking|mobility|easy walk/i.test(text)) changes.walking = "low";
+  else if (/more walking|high walking|enjoy walking|happy on foot|lots of walking/i.test(text)) changes.walking = "high";
+  else if (/moderate walking|some walking|medium walking/i.test(text)) changes.walking = "medium";
   if (/greenest|greener|eco.?friendly|low carbon|less carbon|sustainable/i.test(text)) changes.priority = "greenest";
-  else if (/fastest|faster|quickest|in a hurry/i.test(text)) changes.priority = "fastest";
-  else if (/cheapest|cheaper|save money|lower cost/i.test(text)) changes.priority = "cheapest";
+  else if (/fastest|faster|quickest|in a hurry|save time/i.test(text)) changes.priority = "fastest";
+  else if (/cheapest|cheaper|save money|lower cost|budget friendly|economical/i.test(text)) changes.priority = "cheapest";
   else if (/\bbalanced?\b/i.test(text)) changes.priority = "balanced";
-  const lessDay = text.match(/\b(?:one|1)\s+(?:less|fewer)\s+day\b|\bcut\s+(?:one|1)\s+day\b/i);
-  const explicitDays = text.match(/\b(\d{1,2})\s+days?\b/i);
-  if (lessDay) changes.days = Math.max(1, input.days - 1);
+  const moreDay = text.match(/\b(?:add|extend|plus|\+)\s*(?:one|1)?\s*day\b/i);
+  const lessDay = text.match(/\b(?:one|1)\s+(?:less|fewer)\s+day\b|\bcut\s+(?:one|1)\s+day\b|\breduce\s+(?:by\s+)?(?:one|1)\s+day\b/i);
+  const explicitDays = text.match(/\b(?:make\s+it\s+|for\s+)?(\d{1,2})\s*days?\b/i);
+  if (moreDay) changes.days = Math.min(7, input.days + 1);
+  else if (lessDay) changes.days = Math.max(1, input.days - 1);
   else if (explicitDays) changes.days = Math.min(7, Math.max(1, Number(explicitDays[1])));
   const normalized = text.toLowerCase().replace(/[^a-z0-9\s'-]/g, " ").replace(/\s+/g, " ");
   if (/\b(skip|remove|drop|avoid)\b/i.test(normalized)) {
@@ -669,7 +672,9 @@ export function parseNaturalChanges(text: string, input: TripInput): Partial<Tri
 async function optionalAIText(system: string, prompt: string): Promise<string | undefined> {
   const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
   const openAIKey = process.env.OPENAI_API_KEY?.trim();
-  if (anthropicKey) {
+  const groqKey = process.env.GROQ_API_KEY?.trim();
+  const provider = process.env.AI_PROVIDER?.trim().toLowerCase();
+  if (anthropicKey && provider !== "openai" && provider !== "groq") {
     try {
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -679,7 +684,7 @@ async function optionalAIText(system: string, prompt: string): Promise<string | 
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "claude-3-5-haiku-latest",
+          model: process.env.ANTHROPIC_MODEL?.trim() || "claude-3-5-haiku-latest",
           max_tokens: 8192,
           system,
           messages: [{ role: "user", content: prompt }],
@@ -694,19 +699,39 @@ async function optionalAIText(system: string, prompt: string): Promise<string | 
       // Optional AI failures should leave the deterministic path in control.
     }
   }
-  if (openAIKey) {
+  if (openAIKey && provider !== "anthropic" && provider !== "groq") {
     try {
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${openAIKey}` },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model: process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini",
           max_tokens: 8192,
           messages: [{ role: "system", content: system }, { role: "user", content: prompt }],
         }),
         signal: AbortSignal.timeout(6000),
       });
       if (!response.ok) throw new Error(`OpenAI ${response.status}`);
+      const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+      const text = body.choices?.[0]?.message?.content?.trim();
+      if (text) return text;
+    } catch {
+      // Optional AI failures should leave the deterministic path in control.
+    }
+  }
+  if (groqKey && provider !== "anthropic" && provider !== "openai") {
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${groqKey}` },
+        body: JSON.stringify({
+          model: process.env.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile",
+          max_tokens: 8192,
+          messages: [{ role: "system", content: system }, { role: "user", content: prompt }],
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!response.ok) throw new Error(`Groq ${response.status}`);
       const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
       const text = body.choices?.[0]?.message?.content?.trim();
       if (text) return text;

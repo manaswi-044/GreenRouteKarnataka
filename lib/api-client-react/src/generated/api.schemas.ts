@@ -277,6 +277,23 @@ export interface NaturalReplanResponse {
   diff: ReplanDiff;
 }
 
+export interface TranslateRequest {
+  text: string;
+  from: string;
+  to: string;
+  context?: string;
+}
+
+export interface TranslateResponse {
+  translatedText: string;
+  romanized: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  pronunciation?: string;
+  audioPhonetic?: string;
+  notes?: string;
+}
+
 export type GetPlacesParams = {
 /**
  * Comma-separated interest tags

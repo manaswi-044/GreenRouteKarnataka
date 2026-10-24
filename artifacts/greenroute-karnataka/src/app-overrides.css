@@ -79,6 +79,95 @@
   color: #fff;
   font: 700 10px var(--app-font-mono);
   box-shadow: 0 3px 9px #0f172a55;
+  animation: map-pin-in .55s var(--pin-delay, 0ms) both cubic-bezier(.2,.8,.2,1);
+}
+
+.map-frame {
+  animation: map-frame-in .7s both cubic-bezier(.2,.8,.2,1);
+}
+
+.route-line {
+  animation: route-flow 2.8s linear infinite;
+  stroke-linecap: round;
+}
+
+.map-location-control {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  z-index: 700;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+}
+
+.map-location-control button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #ffffffb8;
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: #fffffff0;
+  color: #0f172a;
+  font: 600 10px var(--app-font-sans);
+  box-shadow: 0 2px 9px #0f172a20;
+  cursor: pointer;
+}
+
+.map-location-control button.tracking {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #fff;
+}
+
+.location-dot {
+  width: 8px;
+  height: 8px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px #2563eb33;
+}
+
+.map-location-control button.tracking .location-dot {
+  background: #fff;
+  animation: location-pulse 1.5s infinite;
+}
+
+.map-location-control > span {
+  max-width: 180px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: #fffffff0;
+  color: #334155;
+  font: 600 9px var(--app-font-sans);
+  box-shadow: 0 2px 9px #0f172a20;
+}
+
+@keyframes map-frame-in {
+  from { opacity: 0; transform: translateY(10px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes map-pin-in {
+  from { opacity: 0; transform: translateY(8px) scale(.55); }
+  70% { transform: translateY(-2px) scale(1.08); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes route-flow {
+  to { stroke-dashoffset: -28; }
+}
+
+@keyframes location-pulse {
+  50% { box-shadow: 0 0 0 6px #ffffff33; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-frame, .route-pin, .route-line, .map-location-control button.tracking .location-dot {
+    animation: none;
+  }
 }
 
 .map-credit {

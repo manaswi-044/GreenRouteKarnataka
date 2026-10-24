@@ -31,6 +31,8 @@ import type {
   RankedPlace,
   ReplanRequest,
   ReplanResponse,
+  TranslateRequest,
+  TranslateResponse,
   TripInput,
   Weather
 } from './api.schemas';
@@ -801,5 +803,93 @@ export const useReplanItineraryInNaturalLanguage = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getReplanItineraryInNaturalLanguageMutationOptions(options));
+    }
+
+export const getTranslateSpeechUrl = () => {
+
+
+
+
+  return `/api/translate`
+}
+
+/**
+ * @summary Translate between tourist and Karnataka local languages
+ */
+export const translateSpeech = async (translateRequest: TranslateRequest, options?: Parameters<typeof customFetch>[1]): Promise<TranslateResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<TranslateResponse>(getTranslateSpeechUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(translateRequest)
+  }
+);}
+
+
+
+
+
+export const getTranslateSpeechMutationKey = () => ['translateSpeech'] as const;
+
+export const getTranslateSpeechMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof translateSpeech>>, TError,TranslateSpeechMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof translateSpeech>>, TError,TranslateSpeechMutationVariables, TContext> => {
+
+const mutationKey = getTranslateSpeechMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof translateSpeech>>, TranslateSpeechMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  translateSpeech(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TranslateSpeechMutationResult = NonNullable<Awaited<ReturnType<typeof translateSpeech>>>
+    export type TranslateSpeechMutationBody = BodyType<TranslateRequest>
+    export type TranslateSpeechMutationError = ErrorType<unknown>
+    export type TranslateSpeechMutationVariables = {data: BodyType<TranslateRequest>}
+
+    /**
+ * @summary Translate between tourist and Karnataka local languages
+ */
+export const useTranslateSpeech = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof translateSpeech>>, TError,TranslateSpeechMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof translateSpeech>>,
+        TError,
+        TranslateSpeechMutationVariables,
+        TContext
+      > => {
+      return useMutation(getTranslateSpeechMutationOptions(options));
     }
 

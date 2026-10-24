@@ -21,9 +21,15 @@ The landing page includes three end-to-end presets:
 
 For the over-budget demo, open the Heritage & Nature route, choose **Change my plan**, and lower the budget to ₹3,000. The results page also offers one-click route changes when a plan exceeds its budget.
 
-## Optional AI
+## AI setup
 
-Deterministic recommendations, route scoring, narrative templates and the natural-language regex parser are the default. If configured in Replit Secrets, `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` enables optional day narratives and natural-language change parsing. Optional AI failures fall back to the deterministic behavior.
+Deterministic recommendations, route scoring, narrative templates and the natural-language parser are always available. To enable the live AI features, copy the workspace `.env.example` to your local environment and set one provider key:
+
+- `ANTHROPIC_API_KEY` (default model: `claude-3-5-haiku-latest`)
+- `OPENAI_API_KEY` (default model: `gpt-4o-mini`)
+- `GROQ_API_KEY` (default model: `llama-3.3-70b-versatile`)
+
+Set `AI_PROVIDER=anthropic`, `AI_PROVIDER=openai`, or `AI_PROVIDER=groq` when multiple keys are present. The API exposes `/api/ai/status` without returning credentials, and the replanning drawer shows whether a live provider is ready. AI failures fall back to the deterministic behavior, so trip planning remains usable.
 
 ## How the optimiser works
 

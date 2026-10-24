@@ -685,3 +685,24 @@ export const ReplanItineraryInNaturalLanguageResponse = zod.object({
 })
 
 
+/**
+ * @summary Translate between tourist and Karnataka local languages
+ */
+export const TranslateSpeechBody = zod.object({
+  "text": zod.string(),
+  "from": zod.string(),
+  "to": zod.string(),
+  "context": zod.string().optional()
+})
+
+export const TranslateSpeechResponse = zod.object({
+  "translatedText": zod.string(),
+  "romanized": zod.string(),
+  "sourceLanguage": zod.string(),
+  "targetLanguage": zod.string(),
+  "pronunciation": zod.string().optional(),
+  "audioPhonetic": zod.string().optional(),
+  "notes": zod.string().optional()
+})
+
+
