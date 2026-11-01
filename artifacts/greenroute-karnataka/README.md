@@ -22,6 +22,8 @@ project root. The Vercel build produces the static frontend in
 The frontend expects the API at `/api`. For a production deployment, deploy
 the API separately and configure the Vercel project with the appropriate
 rewrite or API host; the Vite development proxy only targets the local API.
+When the API is hosted on a different origin, set `VITE_API_URL` to that API
+base URL (without a trailing slash) before building the frontend.
 
 The **Voice guide** route (`/translator`) lets travellers speak into their device microphone, translate the transcript between their language and Kannada or another Karnataka language, and play the translation aloud. It uses the browser Web Speech API, so microphone permission is required and support depends on the browser (Chrome, Edge and Safari are recommended). Typed input and the on-screen pronunciation remain available when voice recognition is unavailable.
 

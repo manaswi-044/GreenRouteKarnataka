@@ -7,12 +7,13 @@ import NotFound from '@/pages/not-found';
 import { Route, Switch, useLocation, Router as WouterRouter, Link } from 'wouter';
 import { ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Bus, CalendarDays, Car, Check, ChevronDown, CircleHelp, CloudRain, Compass, Copy, Footprints, Leaf, MapPin, Mic, Moon, Navigation, Plus, Printer, RotateCcw, Save, Search, Share2, SlidersHorizontal, Sparkles, Sun, Train, Trash2, TrendingDown, X, Zap } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from 'recharts';
-import { getGetPlaceMediaQueryKey, getGetWeatherQueryKey, useCreateItinerary, useGetGreenRouteHealth, useGetHubs, useGetPlaceMedia, useGetPlaces, useGetWeather, useHealthCheck, useReplanItinerary, useReplanItineraryInNaturalLanguage } from '@workspace/api-client-react';
+import { getGetPlaceMediaQueryKey, getGetWeatherQueryKey, setBaseUrl, useCreateItinerary, useGetGreenRouteHealth, useGetHubs, useGetPlaceMedia, useGetPlaces, useGetWeather, useHealthCheck, useReplanItinerary, useReplanItineraryInNaturalLanguage } from '@workspace/api-client-react';
 import type { GetPlacesParams, Hub, Itinerary, Mode, Place, RankedPlace, ReplanRequest, Strategy, TripInput } from '@workspace/api-client-react';
 import { modeColors, modeNames, RouteMap } from '@/components/route-map';
 import { LocalTranslatorPage } from '@/pages/translator';
 
 const queryClient = new QueryClient();
+setBaseUrl(import.meta.env.VITE_API_URL || null);
 const interestNames: Record<string,string> = {history:'History',nature:'Nature',waterfalls:'Waterfalls',beaches:'Coast',temples:'Temples',adventure:'Adventure',food:'Food',wildlife:'Wildlife','hidden-gems':'Hidden gems'};
 const strategyNames: Record<Strategy,string> = {balanced:'Balanced',greenest:'Lowest carbon',cheapest:'Lowest cost',fastest:'Fastest'};
 const initialInput: TripInput = {startHub:'Bengaluru',days:3,budget:5000,interests:['history','nature'],pace:'balanced',priority:'greenest',walking:'medium',month:11,hiddenGems:true};
@@ -92,7 +93,7 @@ function App() {
   useEffect(()=>{if(location==='/plan') setStep(1)},[location]);
   useEffect(()=>{if(itinerary) setReplanChanges({budget:itinerary.input.budget,days:itinerary.input.days,walking:itinerary.input.walking,priority:strategy})},[itinerary,strategy]);
   const notify = (message:string)=>{setNotice(message);window.setTimeout(()=>setNotice(''),2800)};
-  const runPlan=(trip:TripInput)=>{setInput(trip);create.mutate({data:trip},{onSuccess:(data)=>{setItinerary(data);setStrategy(trip.priority);setSelectedDay(0);setLocation('/results')},onError:()=>notify('We could not build this route. Please try again.')})};
+  const runPlan=(trip:TripInput)=>{setInput(trip);create.mutate({data:trip},{onSuccess:(data)=>{setItinerary(data);setStrategy(trip.priority);setSelectedDay(0);setLocation('/results')},onError:(error)=>notify(error instanceof Error && error.message ? error.message : 'We could not build this route. Please try again.')})};
   const saveTrip=()=>{if(!itinerary)return;const savedItinerary={...itinerary,input:{...itinerary.input,priority:strategy}};const entry:SavedTrip={id:`${Date.now()}`,name:`${itinerary.input.startHub} · ${itinerary.input.days} days`,savedAt:new Date().toISOString(),itinerary:savedItinerary};const next=[entry,...saved];setSaved(next);localStorage.setItem('greenroute-trips',JSON.stringify(next));notify('Trip saved to your collection.')};
   const removeSaved=(id:string)=>{const next=saved.filter(t=>t.id!==id);setSaved(next);localStorage.setItem('greenroute-trips',JSON.stringify(next))};
   const duplicate=(t:SavedTrip)=>{const copy:SavedTrip={...t,id:`${Date.now()}`,name:`${t.name} (copy)`,savedAt:new Date().toISOString()};const next=[copy,...saved];setSaved(next);localStorage.setItem('greenroute-trips',JSON.stringify(next));notify('A copy is ready in your trips.')};
