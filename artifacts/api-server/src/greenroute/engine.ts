@@ -769,7 +769,11 @@ async function addOptionalNarratives(days: Day[], input: TripInput) {
 
 export async function parseNaturalChangesWithLLM(text: string, input: TripInput) {
   const fallback = parseNaturalChanges(text, input);
-  if (!process.env.ANTHROPIC_API_KEY?.trim() && !process.env.OPENAI_API_KEY?.trim()) return fallback;
+  if (
+    !process.env.ANTHROPIC_API_KEY?.trim()
+    && !process.env.OPENAI_API_KEY?.trim()
+    && !process.env.GROQ_API_KEY?.trim()
+  ) return fallback;
   const response = await optionalAIText(
     "Convert the requested travel-plan changes to JSON only. Allowed keys: budget (integer INR), days (1-7), walking (low|medium|high), priority (cheapest|fastest|greenest|balanced), excludeInterests (array of supported interest ids). Omit unspecified keys.",
     JSON.stringify({ request: text, current: { budget: input.budget, days: input.days, walking: input.walking, priority: input.priority, interests: input.interests } }),

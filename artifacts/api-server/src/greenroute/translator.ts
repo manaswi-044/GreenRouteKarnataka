@@ -215,6 +215,8 @@ async function callAITranslator(
 ): Promise<TranslateResponse | undefined> {
   const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
   const openAIKey = process.env.OPENAI_API_KEY?.trim();
+  const groqKey = process.env.GROQ_API_KEY?.trim();
+  const provider = process.env.AI_PROVIDER?.trim().toLowerCase();
 
   const systemPrompt = `You are a specialized linguistic travel translator for Karnataka, India.
 You translate accurately between tourist languages (English, Hindi, etc.) and Karnataka languages:
@@ -244,7 +246,7 @@ Return valid JSON only, no markdown markers.`;
     context: context ?? "General tourist conversation in Karnataka",
   });
 
-  if (anthropicKey) {
+  if (anthropicKey && provider !== "openai" && provider !== "groq") {
     try {
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -284,13 +286,51 @@ Return valid JSON only, no markdown markers.`;
     }
   }
 
-  if (openAIKey) {
+  if (openAIKey && provider !== "anthropic" && provider !== "groq") {
     try {
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${openAIKey}` },
         body: JSON.stringify({
           model: "gpt-4o-mini",
+          max_tokens: 1024,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+        }),
+        signal: AbortSignal.timeout(6000),
+      });
+      if (response.ok) {
+        const body = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+        const raw = body.choices?.[0]?.message?.content?.trim();
+        if (raw) {
+          const parsed = JSON.parse(raw.replace(/^```(?:json)?\s*|\s*```$/g, "")) as Partial<TranslateResponse>;
+          if (parsed.translatedText && parsed.romanized) {
+            return {
+              translatedText: parsed.translatedText,
+              romanized: parsed.romanized,
+              sourceLanguage: fromLang.name,
+              targetLanguage: toLang.name,
+              audioPhonetic: parsed.audioPhonetic ?? parsed.romanized,
+              pronunciation: parsed.pronunciation ?? "",
+              notes: parsed.notes ?? "",
+            };
+          }
+        }
+      }
+    } catch {
+      // Continue to deterministic fallback
+    }
+  }
+
+  if (groqKey && provider !== "anthropic" && provider !== "openai") {
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${groqKey}` },
+        body: JSON.stringify({
+          model: process.env.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile",
           max_tokens: 1024,
           messages: [
             { role: "system", content: systemPrompt },
